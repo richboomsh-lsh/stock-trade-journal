@@ -18,7 +18,7 @@ function Field({ label, value, color }) {
   if (value === null || value === undefined || value === '') return null
   return (
     <div style={{ marginBottom: '12px' }}>
-      <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '3px' }}>{label}</div>
+      <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '3px' }}>{label}</div>
       <div style={{ fontSize: '14px', color: color || '#1e293b', lineHeight: '1.6' }}>{value}</div>
     </div>
   )
@@ -28,12 +28,12 @@ function TagList({ label, items }) {
   if (!items || items.length === 0) return null
   return (
     <div style={{ marginBottom: '12px' }}>
-      <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>{label}</div>
+      <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '6px' }}>{label}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
         {items.map((item, i) => (
           <span key={i} style={{
             padding: '2px 10px', background: '#f1f5f9', color: '#475569',
-            borderRadius: '20px', fontSize: '13px', border: '1px solid #e2e8f0',
+            borderRadius: '20px', fontSize: '14px', border: '1px solid #e2e8f0',
           }}>{item}</span>
         ))}
       </div>
@@ -48,7 +48,7 @@ function Section({ title, children }) {
       padding: '16px', marginBottom: '12px',
     }}>
       <h3 style={{
-        fontSize: '13px', fontWeight: 700, color: '#64748b', marginBottom: '14px',
+        fontSize: '14px', fontWeight: 700, color: '#64748b', marginBottom: '14px',
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>{title}</h3>
       {children}
@@ -128,13 +128,13 @@ export default function TradeDetail() {
         <Link to={`/edit/${trade.id}`} style={{
           padding: '7px 14px', background: '#2563eb', color: '#fff',
           textDecoration: 'none', borderRadius: '8px',
-          fontSize: isMobile ? '13px' : '14px',
+          fontSize: isMobile ? '14px' : '15px',
           fontWeight: 600, whiteSpace: 'nowrap',
         }}>✏️ 수정</Link>
         <button onClick={deleteTrade} style={{
           padding: '7px 14px', background: '#fee2e2', color: '#dc2626',
           border: '1px solid #fca5a5', borderRadius: '8px',
-          fontSize: isMobile ? '13px' : '14px',
+          fontSize: isMobile ? '14px' : '15px',
           cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
         }}>🗑️ 삭제</button>
       </div>
@@ -160,13 +160,13 @@ export default function TradeDetail() {
                 background: gradeColors[trade.trade_grade] + '20',
                 color: gradeColors[trade.trade_grade],
                 border: `1px solid ${gradeColors[trade.trade_grade]}40`,
-                borderRadius: '6px', fontSize: '13px', fontWeight: 700,
+                borderRadius: '6px', fontSize: '14px', fontWeight: 700,
               }}>등급 {trade.trade_grade}</span>
             )}
             {trade.sector && (
               <span style={{
                 padding: '2px 10px', background: '#f1f5f9',
-                color: '#64748b', borderRadius: '6px', fontSize: '13px',
+                color: '#64748b', borderRadius: '6px', fontSize: '14px',
               }}>{trade.sector}</span>
             )}
           </div>
@@ -180,22 +180,22 @@ export default function TradeDetail() {
         }}>
           {trade.profit_rate != null && (
             <div>
-              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>수익률</div>
-              <div style={{ fontSize: isMobile ? '24px' : '28px', fontWeight: 700, color: getProfitColor(trade.profit_rate) }}>
+              <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '4px' }}>수익률</div>
+              <div style={{ fontSize: isMobile ? '22px' : '26px', fontWeight: 700, color: getProfitColor(trade.profit_rate) }}>
                 {isProfit ? '+' : ''}{trade.profit_rate.toFixed(2)}%
               </div>
             </div>
           )}
           {trade.profit_amount != null && (
             <div>
-              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>수익금</div>
+              <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '4px' }}>수익금</div>
               <div style={{ fontSize: isMobile ? '18px' : '20px', fontWeight: 700, color: getProfitColor(trade.profit_rate) }}>
                 {trade.profit_amount >= 0 ? '+' : ''}{formatKRW(trade.profit_amount)}원
               </div>
             </div>
           )}
           <div>
-            <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>보유기간</div>
+            <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '4px' }}>보유기간</div>
             <div style={{ fontSize: isMobile ? '18px' : '20px', fontWeight: 700, color: '#1e293b' }}>
               {trade.holding_days != null ? `${trade.holding_days}일` : '-'}
             </div>
@@ -263,19 +263,19 @@ export default function TradeDetail() {
             <Section title="성찰">
               {trade.reflection_good && (
                 <div style={{ marginBottom: '14px' }}>
-                  <div style={{ fontSize: '12px', color: '#16a34a', marginBottom: '4px', fontWeight: 600 }}>✅ 잘한 점</div>
+                  <div style={{ fontSize: '14px', color: '#16a34a', marginBottom: '4px', fontWeight: 600 }}>✅ 잘한 점</div>
                   <div style={{ fontSize: '14px', color: '#1e293b', lineHeight: '1.6' }}>{trade.reflection_good}</div>
                 </div>
               )}
               {trade.reflection_bad && (
                 <div style={{ marginBottom: '14px' }}>
-                  <div style={{ fontSize: '12px', color: '#dc2626', marginBottom: '4px', fontWeight: 600 }}>❌ 아쉬운 점</div>
+                  <div style={{ fontSize: '14px', color: '#dc2626', marginBottom: '4px', fontWeight: 600 }}>❌ 아쉬운 점</div>
                   <div style={{ fontSize: '14px', color: '#1e293b', lineHeight: '1.6' }}>{trade.reflection_bad}</div>
                 </div>
               )}
               {trade.reflection_next && (
                 <div>
-                  <div style={{ fontSize: '12px', color: '#2563eb', marginBottom: '4px', fontWeight: 600 }}>💡 다음에는</div>
+                  <div style={{ fontSize: '14px', color: '#2563eb', marginBottom: '4px', fontWeight: 600 }}>💡 다음에는</div>
                   <div style={{ fontSize: '14px', color: '#1e293b', lineHeight: '1.6' }}>{trade.reflection_next}</div>
                 </div>
               )}
@@ -286,7 +286,7 @@ export default function TradeDetail() {
             <Section title="뉴스 / 공시 링크">
               {trade.news_links.filter(l => l).map((link, i) => (
                 <a key={i} href={link} target="_blank" rel="noreferrer" style={{
-                  display: 'block', color: '#2563eb', fontSize: '13px',
+                  display: 'block', color: '#2563eb', fontSize: '14px',
                   marginBottom: '6px', textDecoration: 'none',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>🔗 {link}</a>

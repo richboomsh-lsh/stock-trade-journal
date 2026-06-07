@@ -28,7 +28,7 @@ function SectionTitle({ children }) {
 
 function Label({ children, required }) {
   return (
-    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '4px' }}>
+    <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '4px' }}>
       {children}
       {required && <span style={{ color: '#ef4444', marginLeft: '2px' }}>*</span>}
     </label>
@@ -54,7 +54,7 @@ function MultiSelect({ options, selected, onChange, color = '#3b82f6' }) {
           border: `1px solid ${selected.includes(opt) ? color : '#d1d5db'}`,
           background: selected.includes(opt) ? color : '#f9fafb',
           color: selected.includes(opt) ? '#fff' : '#374151',
-          fontSize: '13px', cursor: 'pointer',
+          fontSize: '14px', cursor: 'pointer',
         }}>
           {opt}
         </button>
@@ -75,7 +75,7 @@ function SingleSelect({ options, value, onChange, colorMap }) {
             border: `1px solid ${isSelected ? activeColor : '#d1d5db'}`,
             background: isSelected ? activeColor : '#f9fafb',
             color: isSelected ? '#fff' : '#374151',
-            fontSize: '13px', cursor: 'pointer', fontWeight: isSelected ? 600 : 400,
+            fontSize: '14px', cursor: 'pointer', fontWeight: isSelected ? 600 : 400,
           }}>
             {opt}
           </button>
@@ -271,7 +271,7 @@ export default function NewTrade() {
             <div>
               <Label required>종목명</Label>
               <input style={inputStyle} {...register('stock_name', { required: '종목명을 입력하세요' })} placeholder="예: 삼성전자" />
-              {errors.stock_name && <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>{errors.stock_name.message}</p>}
+              {errors.stock_name && <p style={{ color: '#ef4444', fontSize: '14px', marginTop: '2px' }}>{errors.stock_name.message}</p>}
             </div>
             <div>
               <Label required>매수일</Label>
@@ -305,14 +305,14 @@ export default function NewTrade() {
               borderRadius: '8px', padding: '12px 16px', marginTop: '12px',
               display: 'flex', gap: '24px', flexWrap: 'wrap',
             }}>
-              <span style={{ fontSize: '13px', color: '#0369a1' }}>
+              <span style={{ fontSize: '14px', color: '#0369a1' }}>
                 💰 수익금: <strong>{profitAmount >= 0 ? '+' : ''}{profitAmount.toLocaleString()}원</strong>
               </span>
-              <span style={{ fontSize: '13px', color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
+              <span style={{ fontSize: '14px', color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
                 📈 수익률: <strong>{profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%</strong>
               </span>
               {holdingDays >= 0 && (
-                <span style={{ fontSize: '13px', color: '#0369a1' }}>
+                <span style={{ fontSize: '14px', color: '#0369a1' }}>
                   📅 보유기간: <strong>{holdingDays}일</strong>
                 </span>
               )}
@@ -413,7 +413,7 @@ export default function NewTrade() {
                       position: 'absolute', top: '-6px', right: '-6px',
                       background: '#dc2626', color: '#fff', border: 'none',
                       borderRadius: '50%', width: '20px', height: '20px',
-                      cursor: 'pointer', fontSize: '12px',
+                      cursor: 'pointer', fontSize: '14px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
                   >✕</button>
@@ -448,7 +448,7 @@ export default function NewTrade() {
                     ? '여기에 놓으세요!'
                     : '차트 이미지를 드래그하거나 클릭해서 추가'}
                 </div>
-                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+                <div style={{ fontSize: '14px', color: '#94a3b8', marginTop: '4px' }}>
                   📋 차트 캡처 후 Ctrl+V 붙여넣기도 가능합니다
                 </div>
               </>
@@ -471,7 +471,7 @@ export default function NewTrade() {
             ))}
             <button type="button" onClick={addNewsLink} style={{
               alignSelf: 'flex-start', padding: '6px 12px', background: '#f1f5f9',
-              border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
+              border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontSize: '14px',
             }}>+ 링크 추가</button>
           </div>
 

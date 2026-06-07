@@ -15,7 +15,7 @@ const MISTAKE_TYPES = ['늦은진입', '이른매도', '손절미이행', '과�
 const THEMES = ['전쟁', '금리', '정책', 'AI', '반도체', '바이오', '환율', '원자재', '실적', '기타']
 
 const label = (text, required) => (
-  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '5px' }}>
+  <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, color: '#374151', marginBottom: '5px' }}>
     {text}{required && <span style={{ color: '#dc2626' }}> *</span>}
   </label>
 )
@@ -59,7 +59,7 @@ function TagSelector({ options, selected, onChange, color = '#2563eb' }) {
         const active = selected.includes(opt)
         return (
           <button key={opt} type="button" onClick={() => toggle(opt)} style={{
-            padding: '4px 12px', borderRadius: '20px', fontSize: '13px', cursor: 'pointer',
+            padding: '4px 12px', borderRadius: '20px', fontSize: '14px', cursor: 'pointer',
             background: active ? color + '15' : '#f8fafc',
             color: active ? color : '#64748b',
             border: `1px solid ${active ? color + '60' : '#e2e8f0'}`,
@@ -293,14 +293,14 @@ export default function EditTrade() {
             display: 'flex', gap: '24px', flexWrap: 'wrap',
           }}>
             <div>
-              <div style={{ fontSize: '12px', color: '#94a3b8' }}>수익률 (자동계산)</div>
+              <div style={{ fontSize: '14px', color: '#94a3b8' }}>수익률 (자동계산)</div>
               <div style={{ fontSize: '22px', fontWeight: 700, color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
                 {profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%
               </div>
             </div>
             {profitAmount !== null && (
               <div>
-                <div style={{ fontSize: '12px', color: '#94a3b8' }}>수익금 (자동계산)</div>
+                <div style={{ fontSize: '14px', color: '#94a3b8' }}>수익금 (자동계산)</div>
                 <div style={{ fontSize: '22px', fontWeight: 700, color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
                   {profitAmount >= 0 ? '+' : ''}{Math.round(profitAmount).toLocaleString()}원
                 </div>
@@ -308,7 +308,7 @@ export default function EditTrade() {
             )}
             {holdingDays !== null && (
               <div>
-                <div style={{ fontSize: '12px', color: '#94a3b8' }}>보유기간</div>
+                <div style={{ fontSize: '14px', color: '#94a3b8' }}>보유기간</div>
                 <div style={{ fontSize: '22px', fontWeight: 700, color: '#1e293b' }}>{holdingDays}일</div>
               </div>
             )}
@@ -322,7 +322,7 @@ export default function EditTrade() {
             <input {...register('stock_name', { required: '종목명을 입력해주세요' })}
               style={{ ...inputStyle, borderColor: errors.stock_name ? '#dc2626' : '#d1d5db' }}
               placeholder="예: 삼성전자" />
-            {errors.stock_name && <p style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px' }}>{errors.stock_name.message}</p>}
+            {errors.stock_name && <p style={{ color: '#dc2626', fontSize: '14px', marginTop: '4px' }}>{errors.stock_name.message}</p>}
           </div>
           <Row>
             <div>
@@ -460,7 +460,7 @@ export default function EditTrade() {
           {/* 기존 이미지 */}
           {existingUrls.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px' }}>기존 이미지</div>
+              <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>기존 이미지</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                 {existingUrls.map((url, i) => (
                   <div key={i} style={{ position: 'relative', width: '120px', height: '80px' }}>
@@ -472,7 +472,7 @@ export default function EditTrade() {
                       position: 'absolute', top: '-6px', right: '-6px',
                       background: '#dc2626', color: '#fff', border: 'none',
                       borderRadius: '50%', width: '20px', height: '20px',
-                      cursor: 'pointer', fontSize: '12px', lineHeight: '20px',
+                      cursor: 'pointer', fontSize: '14px', lineHeight: '20px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>✕</button>
                   </div>
@@ -484,7 +484,7 @@ export default function EditTrade() {
           {/* 새 이미지 미리보기 */}
           {newPreviews.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px' }}>새로 추가할 이미지</div>
+              <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>새로 추가할 이미지</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                 {newPreviews.map((url, i) => (
                   <div key={i} style={{ position: 'relative', width: '120px', height: '80px' }}>
@@ -496,7 +496,7 @@ export default function EditTrade() {
                       position: 'absolute', top: '-6px', right: '-6px',
                       background: '#dc2626', color: '#fff', border: 'none',
                       borderRadius: '50%', width: '20px', height: '20px',
-                      cursor: 'pointer', fontSize: '12px',
+                      cursor: 'pointer', fontSize: '14px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>✕</button>
                   </div>
@@ -526,7 +526,7 @@ export default function EditTrade() {
                 <div style={{ fontSize: '14px', color: '#64748b' }}>
                   {isDragActive ? '여기에 놓으세요!' : '차트 이미지를 드래그하거나 클릭해서 추가하세요'}
                 </div>
-                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+                <div style={{ fontSize: '14px', color: '#94a3b8', marginTop: '4px' }}>
                   📋 차트 캡처 후 Ctrl+V 붙여넣기도 가능합니다 · JPG, PNG, GIF 지원
                 </div>
               </>

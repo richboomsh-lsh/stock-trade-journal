@@ -53,7 +53,7 @@ export default function TradeJournal() {
 
   const sel = {
     padding: '7px 10px', border: '1px solid #d1d5db',
-    borderRadius: '6px', fontSize: '13px', background: '#fff',
+    borderRadius: '6px', fontSize: '14px', background: '#fff',
     cursor: 'pointer', color: '#1e293b',
     flex: isMobile ? '1 1 calc(50% - 4px)' : 'none',
     minWidth: isMobile ? '0' : 'auto',
@@ -70,7 +70,7 @@ export default function TradeJournal() {
           padding: isMobile ? '8px 14px' : '8px 16px',
           background: '#2563eb', color: '#fff',
           textDecoration: 'none', borderRadius: '8px',
-          fontSize: isMobile ? '13px' : '14px', fontWeight: 600,
+          fontSize: isMobile ? '14px' : '15px', fontWeight: 600,
           whiteSpace: 'nowrap',
         }}>+ 새 매매</Link>
       </div>
@@ -92,7 +92,7 @@ export default function TradeJournal() {
               background: '#fff', border: '1px solid #e2e8f0',
               borderRadius: '10px', padding: '12px 14px',
             }}>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>{card.label}</div>
+              <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '4px' }}>{card.label}</div>
               <div style={{ fontSize: isMobile ? '18px' : '20px', fontWeight: 700, color: card.color || '#1e293b' }}>
                 {card.value}
               </div>
@@ -172,7 +172,7 @@ export default function TradeJournal() {
                         padding: '1px 7px',
                         background: gradeColors[trade.trade_grade] + '20',
                         color: gradeColors[trade.trade_grade],
-                        borderRadius: '4px', fontSize: '12px', fontWeight: 700,
+                        borderRadius: '4px', fontSize: '14px', fontWeight: 700,
                         border: `1px solid ${gradeColors[trade.trade_grade]}40`,
                         whiteSpace: 'nowrap',
                       }}>{trade.trade_grade}</span>
@@ -180,14 +180,14 @@ export default function TradeJournal() {
                     {trade.sector && (
                       <span style={{
                         padding: '1px 7px', background: '#f1f5f9',
-                        color: '#64748b', borderRadius: '4px', fontSize: '12px',
+                        color: '#64748b', borderRadius: '4px', fontSize: '14px',
                         whiteSpace: 'nowrap',
                       }}>{trade.sector}</span>
                     )}
                     {trade.trade_style && (
                       <span style={{
                         padding: '1px 7px', background: '#eff6ff',
-                        color: '#2563eb', borderRadius: '4px', fontSize: '12px',
+                        color: '#2563eb', borderRadius: '4px', fontSize: '14px',
                         whiteSpace: 'nowrap',
                       }}>{trade.trade_style}</span>
                     )}
@@ -196,21 +196,21 @@ export default function TradeJournal() {
                   {/* 수익률 */}
                   {trade.profit_rate != null ? (
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: isMobile ? '16px' : '18px', fontWeight: 700, color: getProfitColor(trade.profit_rate) }}>
+                      <div style={{ fontSize: isMobile ? '17px' : '18px', fontWeight: 700, color: getProfitColor(trade.profit_rate) }}>
                         {trade.profit_rate >= 0 ? '+' : ''}{trade.profit_rate.toFixed(2)}%
                       </div>
-                      <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                      <div style={{ fontSize: '14px', color: '#94a3b8' }}>
                         {trade.profit_amount >= 0 ? '+' : ''}{formatKRW(trade.profit_amount)}원
                       </div>
                     </div>
                   ) : (
-                    <span style={{ fontSize: '12px', color: '#94a3b8', flexShrink: 0 }}>미완료</span>
+                    <span style={{ fontSize: '14px', color: '#94a3b8', flexShrink: 0 }}>미완료</span>
                   )}
                 </div>
 
                 {/* ✅ 하단: 날짜/가격 정보 + 삭제 버튼 */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px', color: '#64748b' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '14px', color: '#64748b' }}>
                     <span>매수 {trade.buy_date} · {formatKRW(trade.buy_price)}원</span>
                     {trade.sell_date && (
                       <span>매도 {trade.sell_date} · {formatKRW(trade.sell_price)}원</span>
@@ -226,7 +226,7 @@ export default function TradeJournal() {
                       padding: '5px 10px', background: '#fee2e2',
                       border: '1px solid #fca5a5', borderRadius: '6px',
                       cursor: 'pointer', color: '#dc2626',
-                      fontSize: '12px', flexShrink: 0,
+                      fontSize: '14px', flexShrink: 0,
                     }}
                   >삭제</button>
                 </div>
