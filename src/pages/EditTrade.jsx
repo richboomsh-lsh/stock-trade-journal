@@ -88,6 +88,7 @@ export default function EditTrade() {
   const [newFiles, setNewFiles] = useState([])               // 새로 추가할 파일
   const [newPreviews, setNewPreviews] = useState([])         // 새 파일 미리보기
   const [uploadProgress, setUploadProgress] = useState(false)
+  const [pasteHint, setPasteHint] = useState(false)          // ✅ 붙여넣기 성공 안내
 
   const buyPrice = watch('buy_price')
   const sellPrice = watch('sell_price')
@@ -95,7 +96,6 @@ export default function EditTrade() {
   const buyDate = watch('buy_date')
   const sellDate = watch('sell_date')
 
-  // 자동 계산값
   const profitAmount = buyPrice && sellPrice && quantity
     ? calcProfitAmount(Number(buyPrice), Number(sellPrice), Number(quantity)) : null
   const profitRate = buyPrice && sellPrice
@@ -117,7 +117,6 @@ export default function EditTrade() {
       return
     }
 
-    // 폼에 기존 데이터 채우기
     const fields = [
       'stock_name', 'buy_date', 'buy_price', 'sell_date', 'sell_price',
       'quantity', 'position_size', 'sector', 'trade_style', 'market_condition',
@@ -129,11 +128,9 @@ export default function EditTrade() {
     setThemes(data.themes || [])
     setMistakeTypes(data.mistake_types || [])
 
-    // 뉴스 링크
     const links = data.news_links || []
     for (let i = 0; i < 3; i++) setValue(`news_link_${i}`, links[i] || '')
 
-    // 기존 이미지 URL 불러오기
     if (data.chart_images && data.chart_images.length > 0) {
       setExistingImages(data.chart_images)
       const urls = data.chart_images.map(path => {
@@ -146,17 +143,47 @@ export default function EditTrade() {
     setLoading(false)
   }
 
-  // 새 이미지 드래그앤드롭
-  const onDrop = useCallback((acceptedFiles) => {
-    const imageFiles = acceptedFiles.filter(f => f.type.startsWith('image/'))
+  // ✅ 새 이미지 추가 공통 함수 (드래그앤드롭 + 붙여넣기 공유)
+  const addNewImages = useCallback((files) => {
+    const imageFiles = files.filter(f => f.type.startsWith('image/'))
+    if (imageFiles.length === 0) return
     setNewFiles(prev => [...prev, ...imageFiles])
     const previews = imageFiles.map(f => URL.createObjectURL(f))
     setNewPreviews(prev => [...prev, ...previews])
   }, [])
 
+  // 드래그앤드롭
+  const onDrop = useCallback((acceptedFiles) => {
+    addNewImages(acceptedFiles)
+  }, [addNewImages])
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop, accept: { 'image/*': [] }, multiple: true,
   })
+
+  // ✅ 붙여넣기(Ctrl+V) 이벤트 리스너
+  useEffect(() => {
+    const handlePaste = (e) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+
+      const imageItems = Array.from(items).filter(item => item.type.startsWith('image/'))
+      if (imageItems.length === 0) return
+
+      const files = imageItems.map(item => item.getAsFile()).filter(Boolean)
+      const namedFiles = files.map((file, i) => {
+        const ext = file.type.split('/')[1] || 'png'
+        return new File([file], `paste_${Date.now()}_${i}.${ext}`, { type: file.type })
+      })
+      addNewImages(namedFiles)
+
+      setPasteHint(true)
+      setTimeout(() => setPasteHint(false), 2000)
+    }
+
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [addNewImages])
 
   // 기존 이미지 삭제 표시
   const removeExisting = (index) => {
@@ -185,7 +212,7 @@ export default function EditTrade() {
       // 2. 새 이미지 업로드
       const uploadedPaths = []
       for (const file of newFiles) {
-        const ext = file.name.split('.').pop()
+        const ext = file.name.split('.').pop() || 'png'
         const path = `charts/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
         const { error } = await supabase.storage.from('chart-images').upload(path, file)
         if (!error) uploadedPaths.push(path)
@@ -258,7 +285,6 @@ export default function EditTrade() {
 
       <form onSubmit={handleSubmit(onSubmit)}>
 
-        {/* 자동계산 미리보기 */}
         {(profitRate !== null) && (
           <div style={{
             background: profitRate >= 0 ? '#eff6ff' : '#fef2f2',
@@ -479,19 +505,32 @@ export default function EditTrade() {
             </div>
           )}
 
-          {/* 드래그앤드롭 영역 */}
+          {/* 드래그앤드롭 + 붙여넣기 영역 */}
           <div {...getRootProps()} style={{
             border: `2px dashed ${isDragActive ? '#2563eb' : '#cbd5e1'}`,
             borderRadius: '12px', padding: '32px', textAlign: 'center',
-            cursor: 'pointer', background: isDragActive ? '#eff6ff' : '#f8fafc',
+            cursor: 'pointer',
+            background: isDragActive ? '#eff6ff' : pasteHint ? '#f0fdf4' : '#f8fafc',
             transition: 'all 0.2s',
           }}>
             <input {...getInputProps()} />
-            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📸</div>
-            <div style={{ fontSize: '14px', color: '#64748b' }}>
-              {isDragActive ? '여기에 놓으세요!' : '차트 이미지를 드래그하거나 클릭해서 추가하세요'}
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>
+              {pasteHint ? '✅' : '📸'}
             </div>
-            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>JPG, PNG, GIF 지원</div>
+            {pasteHint ? (
+              <div style={{ fontSize: '14px', color: '#16a34a', fontWeight: 600 }}>
+                이미지가 붙여넣어졌습니다!
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: '14px', color: '#64748b' }}>
+                  {isDragActive ? '여기에 놓으세요!' : '차트 이미지를 드래그하거나 클릭해서 추가하세요'}
+                </div>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+                  📋 차트 캡처 후 Ctrl+V 붙여넣기도 가능합니다 · JPG, PNG, GIF 지원
+                </div>
+              </>
+            )}
           </div>
         </Section>
 
