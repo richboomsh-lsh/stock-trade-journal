@@ -31,6 +31,13 @@ export default function Home() {
             <div style={{ fontSize: '13px', color: '#94a3b8' }}>나의 매매 분석</div>
           </div>
         </Link>
+        <Link to="/settings" style={{ textDecoration: 'none' }}>
+          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', cursor: 'pointer' }}>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>⚙️</div>
+            <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>설정</div>
+            <div style={{ fontSize: '13px', color: '#94a3b8' }}>자산·수수료·항목 관리</div>
+          </div>
+        </Link>
       </div>
     </div>
   )

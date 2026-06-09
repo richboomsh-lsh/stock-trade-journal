@@ -5,6 +5,7 @@ import TradeJournal from './pages/TradeJournal'
 import Stats from './pages/Stats'
 import TradeDetail from './pages/TradeDetail'
 import EditTrade from './pages/EditTrade'
+import Settings from './pages/Settings';
 
 function Navbar() {
   const location = useLocation()
@@ -82,6 +83,7 @@ export default function App() {
               <Route path="/new" element={<NewTrade />} />
               <Route path="/journal" element={<TradeJournal />} />
               <Route path="/stats" element={<Stats />} />
+              <Route path="/settings" element={<Settings />} />
               <Route path="/trade/:id" element={<TradeDetail />} />
               <Route path="/edit/:id" element={<EditTrade />} />
             </Routes>
