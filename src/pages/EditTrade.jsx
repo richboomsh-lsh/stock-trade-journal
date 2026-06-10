@@ -5,14 +5,20 @@ import { useDropzone } from 'react-dropzone'
 import { supabase } from '../lib/supabase'
 import { calcProfitAmount, calcProfitRate, calcHoldingDays } from '../lib/tradeHelpers'
 
-const SECTORS = ['에너지', '반도체', '바이오', '금융', '소비재', '화학', '철강', '건설', '운송', '기타']
-const TRADE_STYLES = ['눌림목', '상한가따라잡기', '돌파매수', '역추세', '스캘핑', '기타']
-const MARKET_CONDITIONS = ['상승장', '하락장', '횡보장']
+// 드롭다운 기본값 (DB 로딩 실패 시 폴백)
+const DEFAULT_OPTIONS = {
+  sector: ['에너지', '반도체', '바이오', '금융', '소비재', '화학', '철강', '건설', '운송', '기타'],
+  trade_style: ['눌림목', '상한가따라잡기', '돌파매수', '역추세', '스캘핑', '기타'],
+  market_condition: ['상승장', '하락장', '횡보장'],
+  sell_reason: ['손절', '목표가도달', '시간손절', '재료소멸', '충동매도'],
+  theme: ['전쟁', '금리', '정책', 'AI', '반도체', '바이오', '환율', '원자재', '실적', '기타'],
+  emotion_before: ['냉정', '설렘', '불안', '과신', 'FOMO', '망설임'],
+  emotion_after: ['만족', '후회', '아쉬움', '안도', '욕심', '평온'],
+  mistake_buy: ['늦은진입', '과도한비중', '근거없는진입', '뇌동매매'],
+  mistake_sell: ['이른매도', '손절미이행', '충동매도', '목표가변경'],
+}
+
 const GRADES = ['A', 'B', 'C', 'D']
-const EMOTIONS = ['냉정', '불안', '과신', 'FOMO', '희망', '후회']
-const SELL_REASONS = ['손절', '목표가도달', '시간손절', '재료소멸', '충동매도']
-const MISTAKE_TYPES = ['늦은진입', '이른매도', '손절미이행', '과도한비중', '뇌동매매', '기타']
-const THEMES = ['전쟁', '금리', '정책', 'AI', '반도체', '바이오', '환율', '원자재', '실적', '기타']
 
 const label = (text, required) => (
   <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, color: '#374151', marginBottom: '5px' }}>
@@ -78,17 +84,31 @@ export default function EditTrade() {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  // 드롭다운 옵션 (DB에서 불러옴)
+  const [options, setOptions] = useState(DEFAULT_OPTIONS)
+
+  // 복수선택 필드
   const [themes, setThemes] = useState([])
-  const [mistakeTypes, setMistakeTypes] = useState([])
+  const [emotionBefore, setEmotionBefore] = useState([])
+  const [emotionAfter, setEmotionAfter] = useState([])
+  const [mistakeBuy, setMistakeBuy] = useState([])
+  const [mistakeSell, setMistakeSell] = useState([])
+
+  // 시장 구분
+  const [market, setMarket] = useState('')
+
+  // 수수료·세금 설정
+  const [feeSettings, setFeeSettings] = useState({ buy_fee_rate: 0.015, sell_fee_rate: 0.015, tax_rate: 0.2 })
 
   // 이미지 관련
-  const [existingImages, setExistingImages] = useState([])   // Supabase에 이미 저장된 경로
-  const [existingUrls, setExistingUrls] = useState([])       // 화면에 보여줄 URL
-  const [removedImages, setRemovedImages] = useState([])     // 삭제할 경로
-  const [newFiles, setNewFiles] = useState([])               // 새로 추가할 파일
-  const [newPreviews, setNewPreviews] = useState([])         // 새 파일 미리보기
+  const [existingImages, setExistingImages] = useState([])
+  const [existingUrls, setExistingUrls] = useState([])
+  const [removedImages, setRemovedImages] = useState([])
+  const [newFiles, setNewFiles] = useState([])
+  const [newPreviews, setNewPreviews] = useState([])
   const [uploadProgress, setUploadProgress] = useState(false)
-  const [pasteHint, setPasteHint] = useState(false)          // ✅ 붙여넣기 성공 안내
+  const [pasteHint, setPasteHint] = useState(false)
 
   const buyPrice = watch('buy_price')
   const sellPrice = watch('sell_price')
@@ -96,6 +116,7 @@ export default function EditTrade() {
   const buyDate = watch('buy_date')
   const sellDate = watch('sell_date')
 
+  // 기본 수익금·수익률·보유기간
   const profitAmount = buyPrice && sellPrice && quantity
     ? calcProfitAmount(Number(buyPrice), Number(sellPrice), Number(quantity)) : null
   const profitRate = buyPrice && sellPrice
@@ -103,9 +124,74 @@ export default function EditTrade() {
   const holdingDays = buyDate && sellDate
     ? calcHoldingDays(buyDate, sellDate) : null
 
+  // 수수료·세금·순수익 자동계산
+  const fee = (buyPrice && sellPrice && quantity)
+    ? Math.round(
+        Number(buyPrice) * Number(quantity) * (feeSettings.buy_fee_rate / 100) +
+        Number(sellPrice) * Number(quantity) * (feeSettings.sell_fee_rate / 100)
+      )
+    : null
+
+  const tax = (sellPrice && quantity && profitAmount !== null && profitAmount > 0)
+    ? Math.round(profitAmount * (feeSettings.tax_rate / 100))
+    : null
+
+  const netProfitAmount = (profitAmount !== null && fee !== null)
+    ? profitAmount - fee - (tax || 0)
+    : null
+
+  const netProfitRate = (netProfitAmount !== null && buyPrice && quantity)
+    ? (netProfitAmount / (Number(buyPrice) * Number(quantity))) * 100
+    : null
+
   useEffect(() => {
+    loadOptions()
+    loadFeeSettings()
     fetchTrade()
   }, [id])
+
+  // dropdown_options 테이블에서 옵션 불러오기
+  const loadOptions = async () => {
+    const { data, error } = await supabase
+      .from('dropdown_options')
+      .select('category, label')
+      .order('sort_order', { ascending: true })
+
+    if (error || !data) return
+
+    const grouped = { ...DEFAULT_OPTIONS }
+    data.forEach(row => {
+      if (!grouped[row.category]) grouped[row.category] = []
+      if (!grouped[row.category].includes(row.label)) {
+        grouped[row.category] = [...grouped[row.category], row.label]
+      }
+    })
+
+    // DB에 해당 카테고리 데이터가 있으면 기본값 대신 DB 값만 사용
+    const categories = [...new Set(data.map(r => r.category))]
+    categories.forEach(cat => {
+      grouped[cat] = data.filter(r => r.category === cat).map(r => r.label)
+    })
+
+    setOptions(grouped)
+  }
+
+  // app_settings에서 수수료·세율 불러오기
+  const loadFeeSettings = async () => {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('buy_fee_rate, sell_fee_rate, tax_rate')
+      .eq('id', 1)
+      .single()
+
+    if (!error && data) {
+      setFeeSettings({
+        buy_fee_rate: Number(data.buy_fee_rate) || 0.015,
+        sell_fee_rate: Number(data.sell_fee_rate) || 0.015,
+        tax_rate: Number(data.tax_rate) || 0.2,
+      })
+    }
+  }
 
   const fetchTrade = async () => {
     const { data, error } = await supabase
@@ -120,17 +206,27 @@ export default function EditTrade() {
     const fields = [
       'stock_name', 'buy_date', 'buy_price', 'sell_date', 'sell_price',
       'quantity', 'position_size', 'sector', 'trade_style', 'market_condition',
-      'trade_grade', 'emotion_state', 'sell_reason',
-      'material_context', 'entry_reason', 'stop_loss_plan', 'response_record',
+      'trade_grade', 'sell_reason',
+      'material_context', 'entry_reason', 'stop_loss_plan', 'trade_log',
       'reflection_good', 'reflection_bad', 'reflection_next',
     ]
     fields.forEach(f => setValue(f, data[f] || ''))
-    setThemes(data.themes || [])
-    setMistakeTypes(data.mistake_types || [])
 
+    // 시장 구분
+    setMarket(data.market || '')
+
+    // 복수선택 필드 복원
+    setThemes(data.themes || [])
+    setEmotionBefore(data.emotion_before || [])
+    setEmotionAfter(data.emotion_after || [])
+    setMistakeBuy(data.mistake_buy || [])
+    setMistakeSell(data.mistake_sell || [])
+
+    // 뉴스 링크
     const links = data.news_links || []
     for (let i = 0; i < 3; i++) setValue(`news_link_${i}`, links[i] || '')
 
+    // 이미지
     if (data.chart_images && data.chart_images.length > 0) {
       setExistingImages(data.chart_images)
       const urls = data.chart_images.map(path => {
@@ -143,7 +239,7 @@ export default function EditTrade() {
     setLoading(false)
   }
 
-  // ✅ 새 이미지 추가 공통 함수 (드래그앤드롭 + 붙여넣기 공유)
+  // 이미지 추가 공통 함수
   const addNewImages = useCallback((files) => {
     const imageFiles = files.filter(f => f.type.startsWith('image/'))
     if (imageFiles.length === 0) return
@@ -152,7 +248,6 @@ export default function EditTrade() {
     setNewPreviews(prev => [...prev, ...previews])
   }, [])
 
-  // 드래그앤드롭
   const onDrop = useCallback((acceptedFiles) => {
     addNewImages(acceptedFiles)
   }, [addNewImages])
@@ -161,38 +256,32 @@ export default function EditTrade() {
     onDrop, accept: { 'image/*': [] }, multiple: true,
   })
 
-  // ✅ 붙여넣기(Ctrl+V) 이벤트 리스너
+  // 붙여넣기 이벤트
   useEffect(() => {
     const handlePaste = (e) => {
       const items = e.clipboardData?.items
       if (!items) return
-
       const imageItems = Array.from(items).filter(item => item.type.startsWith('image/'))
       if (imageItems.length === 0) return
-
       const files = imageItems.map(item => item.getAsFile()).filter(Boolean)
       const namedFiles = files.map((file, i) => {
         const ext = file.type.split('/')[1] || 'png'
         return new File([file], `paste_${Date.now()}_${i}.${ext}`, { type: file.type })
       })
       addNewImages(namedFiles)
-
       setPasteHint(true)
       setTimeout(() => setPasteHint(false), 2000)
     }
-
     window.addEventListener('paste', handlePaste)
     return () => window.removeEventListener('paste', handlePaste)
   }, [addNewImages])
 
-  // 기존 이미지 삭제 표시
   const removeExisting = (index) => {
     setRemovedImages(prev => [...prev, existingImages[index]])
     setExistingImages(prev => prev.filter((_, i) => i !== index))
     setExistingUrls(prev => prev.filter((_, i) => i !== index))
   }
 
-  // 새 이미지 제거
   const removeNew = (index) => {
     URL.revokeObjectURL(newPreviews[index])
     setNewFiles(prev => prev.filter((_, i) => i !== index))
@@ -228,6 +317,7 @@ export default function EditTrade() {
       // 4. DB 업데이트
       const payload = {
         stock_name: formData.stock_name,
+        market: market || null,
         buy_date: formData.buy_date,
         buy_price: Number(formData.buy_price),
         sell_date: formData.sell_date || null,
@@ -237,18 +327,24 @@ export default function EditTrade() {
         profit_amount: profitAmount,
         profit_rate: profitRate,
         holding_days: holdingDays,
+        fee: fee,
+        tax: tax,
+        net_profit_amount: netProfitAmount !== null ? Math.round(netProfitAmount) : null,
+        net_profit_rate: netProfitRate !== null ? parseFloat(netProfitRate.toFixed(4)) : null,
         sector: formData.sector || null,
         themes: themes.length > 0 ? themes : null,
         trade_style: formData.trade_style || null,
         market_condition: formData.market_condition || null,
         trade_grade: formData.trade_grade || null,
-        emotion_state: formData.emotion_state || null,
+        emotion_before: emotionBefore.length > 0 ? emotionBefore : null,
+        emotion_after: emotionAfter.length > 0 ? emotionAfter : null,
         sell_reason: formData.sell_reason || null,
-        mistake_types: mistakeTypes.length > 0 ? mistakeTypes : null,
+        mistake_buy: mistakeBuy.length > 0 ? mistakeBuy : null,
+        mistake_sell: mistakeSell.length > 0 ? mistakeSell : null,
         material_context: formData.material_context || null,
         entry_reason: formData.entry_reason || null,
         stop_loss_plan: formData.stop_loss_plan || null,
-        response_record: formData.response_record || null,
+        trade_log: formData.trade_log || null,
         reflection_good: formData.reflection_good || null,
         reflection_bad: formData.reflection_bad || null,
         reflection_next: formData.reflection_next || null,
@@ -285,31 +381,70 @@ export default function EditTrade() {
 
       <form onSubmit={handleSubmit(onSubmit)}>
 
+        {/* 자동계산 미리보기 카드 */}
         {(profitRate !== null) && (
           <div style={{
             background: profitRate >= 0 ? '#eff6ff' : '#fef2f2',
             border: `1px solid ${profitRate >= 0 ? '#bfdbfe' : '#fecaca'}`,
             borderRadius: '12px', padding: '16px', marginBottom: '16px',
-            display: 'flex', gap: '24px', flexWrap: 'wrap',
           }}>
-            <div>
-              <div style={{ fontSize: '14px', color: '#94a3b8' }}>수익률 (자동계산)</div>
-              <div style={{ fontSize: '22px', fontWeight: 700, color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
-                {profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%
-              </div>
-            </div>
-            {profitAmount !== null && (
+            <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginBottom: netProfitAmount !== null ? '12px' : 0 }}>
               <div>
-                <div style={{ fontSize: '14px', color: '#94a3b8' }}>수익금 (자동계산)</div>
+                <div style={{ fontSize: '13px', color: '#94a3b8' }}>수익률</div>
                 <div style={{ fontSize: '22px', fontWeight: 700, color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
-                  {profitAmount >= 0 ? '+' : ''}{Math.round(profitAmount).toLocaleString()}원
+                  {profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%
                 </div>
               </div>
-            )}
-            {holdingDays !== null && (
-              <div>
-                <div style={{ fontSize: '14px', color: '#94a3b8' }}>보유기간</div>
-                <div style={{ fontSize: '22px', fontWeight: 700, color: '#1e293b' }}>{holdingDays}일</div>
+              {profitAmount !== null && (
+                <div>
+                  <div style={{ fontSize: '13px', color: '#94a3b8' }}>수익금</div>
+                  <div style={{ fontSize: '22px', fontWeight: 700, color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
+                    {profitAmount >= 0 ? '+' : ''}{Math.round(profitAmount).toLocaleString()}원
+                  </div>
+                </div>
+              )}
+              {holdingDays !== null && (
+                <div>
+                  <div style={{ fontSize: '13px', color: '#94a3b8' }}>보유기간</div>
+                  <div style={{ fontSize: '22px', fontWeight: 700, color: '#1e293b' }}>{holdingDays}일</div>
+                </div>
+              )}
+            </div>
+
+            {/* 수수료·세금·순수익 */}
+            {netProfitAmount !== null && (
+              <div style={{
+                display: 'flex', gap: '16px', flexWrap: 'wrap',
+                paddingTop: '12px', borderTop: '1px solid #e2e8f0',
+              }}>
+                <div>
+                  <div style={{ fontSize: '13px', color: '#94a3b8' }}>수수료</div>
+                  <div style={{ fontSize: '15px', fontWeight: 600, color: '#dc2626' }}>
+                    -{fee !== null ? fee.toLocaleString() : 0}원
+                  </div>
+                </div>
+                {tax !== null && tax > 0 && (
+                  <div>
+                    <div style={{ fontSize: '13px', color: '#94a3b8' }}>세금</div>
+                    <div style={{ fontSize: '15px', fontWeight: 600, color: '#dc2626' }}>
+                      -{tax.toLocaleString()}원
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <div style={{ fontSize: '13px', color: '#94a3b8' }}>순수익금</div>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: netProfitAmount >= 0 ? '#2563eb' : '#dc2626' }}>
+                    {netProfitAmount >= 0 ? '+' : ''}{Math.round(netProfitAmount).toLocaleString()}원
+                  </div>
+                </div>
+                {netProfitRate !== null && (
+                  <div>
+                    <div style={{ fontSize: '13px', color: '#94a3b8' }}>순수익률</div>
+                    <div style={{ fontSize: '15px', fontWeight: 700, color: netProfitRate >= 0 ? '#2563eb' : '#dc2626' }}>
+                      {netProfitRate >= 0 ? '+' : ''}{netProfitRate.toFixed(2)}%
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -324,6 +459,24 @@ export default function EditTrade() {
               placeholder="예: 삼성전자" />
             {errors.stock_name && <p style={{ color: '#dc2626', fontSize: '14px', marginTop: '4px' }}>{errors.stock_name.message}</p>}
           </div>
+
+          {/* 시장 구분 */}
+          <div style={{ marginBottom: '12px' }}>
+            {label('시장 구분')}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {['코스피', '코스닥'].map(m => (
+                <button key={m} type="button" onClick={() => setMarket(market === m ? '' : m)} style={{
+                  padding: '7px 20px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer',
+                  fontWeight: market === m ? 700 : 400,
+                  background: market === m ? '#1e293b' : '#f8fafc',
+                  color: market === m ? '#fff' : '#64748b',
+                  border: `1px solid ${market === m ? '#1e293b' : '#e2e8f0'}`,
+                  transition: 'all 0.15s',
+                }}>{m}</button>
+              ))}
+            </div>
+          </div>
+
           <Row>
             <div>
               {label('매수일', true)}
@@ -363,14 +516,14 @@ export default function EditTrade() {
               {label('섹터')}
               <select {...register('sector')} style={inputStyle}>
                 <option value="">선택</option>
-                {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+                {options.sector.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
               {label('매매방식')}
               <select {...register('trade_style')} style={inputStyle}>
                 <option value="">선택</option>
-                {TRADE_STYLES.map(s => <option key={s} value={s}>{s}</option>)}
+                {options.trade_style.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
           </Row>
@@ -378,12 +531,12 @@ export default function EditTrade() {
             {label('시장상황')}
             <select {...register('market_condition')} style={inputStyle}>
               <option value="">선택</option>
-              {MARKET_CONDITIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              {options.market_condition.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
             {label('테마 (복수 선택 가능)')}
-            <TagSelector options={THEMES} selected={themes} onChange={setThemes} color="#7c3aed" />
+            <TagSelector options={options.theme} selected={themes} onChange={setThemes} color="#7c3aed" />
           </div>
         </Section>
 
@@ -398,23 +551,56 @@ export default function EditTrade() {
               </select>
             </div>
             <div>
-              {label('감정상태')}
-              <select {...register('emotion_state')} style={inputStyle}>
+              {label('매도이유')}
+              <select {...register('sell_reason')} style={inputStyle}>
                 <option value="">선택</option>
-                {EMOTIONS.map(e => <option key={e} value={e}>{e}</option>)}
+                {options.sell_reason.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
           </Row>
+
+          {/* 매수 전 감정 */}
           <div style={{ marginBottom: '12px' }}>
-            {label('매도이유')}
-            <select {...register('sell_reason')} style={inputStyle}>
-              <option value="">선택</option>
-              {SELL_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
+            {label('매수 전 감정 (복수 선택 가능)')}
+            <TagSelector
+              options={options.emotion_before}
+              selected={emotionBefore}
+              onChange={setEmotionBefore}
+              color="#f59e0b"
+            />
           </div>
+
+          {/* 매도 후 감정 */}
+          <div style={{ marginBottom: '12px' }}>
+            {label('매도 후 감정 (복수 선택 가능)')}
+            <TagSelector
+              options={options.emotion_after}
+              selected={emotionAfter}
+              onChange={setEmotionAfter}
+              color="#8b5cf6"
+            />
+          </div>
+
+          {/* 매수 실수 */}
+          <div style={{ marginBottom: '12px' }}>
+            {label('매수 실수 (복수 선택 가능)')}
+            <TagSelector
+              options={options.mistake_buy}
+              selected={mistakeBuy}
+              onChange={setMistakeBuy}
+              color="#dc2626"
+            />
+          </div>
+
+          {/* 매도 실수 */}
           <div>
-            {label('실수유형 (복수 선택 가능)')}
-            <TagSelector options={MISTAKE_TYPES} selected={mistakeTypes} onChange={setMistakeTypes} color="#dc2626" />
+            {label('매도 실수 (복수 선택 가능)')}
+            <TagSelector
+              options={options.mistake_sell}
+              selected={mistakeSell}
+              onChange={setMistakeSell}
+              color="#ea580c"
+            />
           </div>
         </Section>
 
@@ -434,7 +620,7 @@ export default function EditTrade() {
           </div>
           <div>
             {label('대응 기록')}
-            <textarea {...register('response_record')} style={textareaStyle} placeholder="매매 중 어떻게 대응했는지 기록하세요" />
+            <textarea {...register('trade_log')} style={textareaStyle} placeholder="매매 중 어떻게 대응했는지 기록하세요" />
           </div>
         </Section>
 
@@ -456,8 +642,6 @@ export default function EditTrade() {
 
         {/* 차트 이미지 */}
         <Section title="차트 이미지">
-
-          {/* 기존 이미지 */}
           {existingUrls.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
               <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>기존 이미지</div>
@@ -472,7 +656,7 @@ export default function EditTrade() {
                       position: 'absolute', top: '-6px', right: '-6px',
                       background: '#dc2626', color: '#fff', border: 'none',
                       borderRadius: '50%', width: '20px', height: '20px',
-                      cursor: 'pointer', fontSize: '14px', lineHeight: '20px',
+                      cursor: 'pointer', fontSize: '14px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>✕</button>
                   </div>
@@ -481,7 +665,6 @@ export default function EditTrade() {
             </div>
           )}
 
-          {/* 새 이미지 미리보기 */}
           {newPreviews.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
               <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>새로 추가할 이미지</div>
@@ -505,7 +688,6 @@ export default function EditTrade() {
             </div>
           )}
 
-          {/* 드래그앤드롭 + 붙여넣기 영역 */}
           <div {...getRootProps()} style={{
             border: `2px dashed ${isDragActive ? '#2563eb' : '#cbd5e1'}`,
             borderRadius: '12px', padding: '32px', textAlign: 'center',

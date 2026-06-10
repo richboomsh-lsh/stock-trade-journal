@@ -1,18 +1,14 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useDropzone } from 'react-dropzone'
 import { supabase } from '../lib/supabase'
 import { calcProfitAmount, calcProfitRate, calcHoldingDays } from '../lib/tradeHelpers'
 
-const SECTORS = ['에너지', '반도체', '바이오', '금융', '소비재', '화학', '철강', '건설', '운송', '기타']
-const THEMES = ['전쟁', '금리', '정책', 'AI', '반도체', '바이오', '환율', '원자재', '기타']
-const TRADE_STYLES = ['눌림목', '상한가따라잡기', '돌파매수', '역추세', '스캘핑', '기타']
-const MARKET_CONDITIONS = ['상승장', '하락장', '횡보장']
 const GRADES = ['A', 'B', 'C', 'D']
-const EMOTIONS = ['냉정', '불안', '과신', 'FOMO', '조급함', '기타']
-const SELL_REASONS = ['손절', '목표가도달', '시간손절', '재료소멸', '충동매도']
-const MISTAKE_TYPES = ['늦은진입', '이른매도', '손절미이행', '과도한비중', '충동매수', '기타']
+const MARKETS = ['코스피', '코스닥']
+
+const GRADE_COLORS = { A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#dc2626' }
 
 function SectionTitle({ children }) {
   return (
@@ -38,7 +34,12 @@ function Label({ children, required }) {
 const inputStyle = {
   width: '100%', padding: '8px 12px', border: '1px solid #d1d5db',
   borderRadius: '6px', fontSize: '14px', outline: 'none',
-  boxSizing: 'border-box', background: '#fff',
+  boxSizing: 'border-box', background: '#fff', color: '#1e293b',
+}
+
+const selectStyle = {
+  ...inputStyle,
+  cursor: 'pointer', appearance: 'auto',
 }
 
 function MultiSelect({ options, selected, onChange, color = '#3b82f6' }) {
@@ -63,21 +64,22 @@ function MultiSelect({ options, selected, onChange, color = '#3b82f6' }) {
   )
 }
 
-function SingleSelect({ options, value, onChange, colorMap }) {
+// 시장 구분 — 버튼 2개만 있어서 버튼 방식 유지
+function MarketSelect({ value, onChange }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-      {options.map(opt => {
-        const activeColor = colorMap ? colorMap[opt] : '#3b82f6'
-        const isSelected = value === opt
+    <div style={{ display: 'flex', gap: '6px' }}>
+      {MARKETS.map(m => {
+        const color = m === '코스피' ? '#2563eb' : '#7c3aed'
+        const isSelected = value === m
         return (
-          <button key={opt} type="button" onClick={() => onChange(opt)} style={{
-            padding: '5px 14px', borderRadius: '6px',
-            border: `1px solid ${isSelected ? activeColor : '#d1d5db'}`,
-            background: isSelected ? activeColor : '#f9fafb',
+          <button key={m} type="button" onClick={() => onChange(isSelected ? '' : m)} style={{
+            padding: '7px 20px', borderRadius: '6px',
+            border: `1px solid ${isSelected ? color : '#d1d5db'}`,
+            background: isSelected ? color : '#f9fafb',
             color: isSelected ? '#fff' : '#374151',
             fontSize: '14px', cursor: 'pointer', fontWeight: isSelected ? 600 : 400,
           }}>
-            {opt}
+            {m}
           </button>
         )
       })}
@@ -90,20 +92,35 @@ export default function NewTrade() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
-  const [themes, setThemes] = useState([])
-  const [mistakeTypes, setMistakeTypes] = useState([])
-  const [newsLinks, setNewsLinks] = useState([''])
+
+  const [opts, setOpts] = useState({
+    sector: [], theme: [], trade_style: [], market_condition: [],
+    sell_reason: [], emotion_before: [], emotion_after: [],
+    mistake_buy: [], mistake_sell: [],
+  })
+  const [optsLoading, setOptsLoading] = useState(true)
+
+  const [feeRate, setFeeRate] = useState({ buy: 0.015, sell: 0.015 })
+  const [taxRate, setTaxRate] = useState(0.2)
+
+  const [market, setMarket] = useState('')
   const [sector, setSector] = useState('')
+  const [themes, setThemes] = useState([])
   const [tradeStyle, setTradeStyle] = useState('')
   const [marketCondition, setMarketCondition] = useState('')
   const [tradeGrade, setTradeGrade] = useState('')
   const [emotionState, setEmotionState] = useState('')
+  const [emotionBefore, setEmotionBefore] = useState([])
+  const [emotionAfter, setEmotionAfter] = useState([])
   const [sellReason, setSellReason] = useState('')
+  const [mistakeTypes, setMistakeTypes] = useState([])
+  const [mistakeBuy, setMistakeBuy] = useState([])
+  const [mistakeSell, setMistakeSell] = useState([])
+  const [newsLinks, setNewsLinks] = useState([''])
 
-  // ✅ 이미지 관련 상태
-  const [imageFiles, setImageFiles] = useState([])       // 업로드할 File 객체들
-  const [imagePreviews, setImagePreviews] = useState([]) // 미리보기 URL들
-  const [pasteHint, setPasteHint] = useState(false)      // 붙여넣기 안내 표시
+  const [imageFiles, setImageFiles] = useState([])
+  const [imagePreviews, setImagePreviews] = useState([])
+  const [pasteHint, setPasteHint] = useState(false)
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm()
 
@@ -117,53 +134,80 @@ export default function NewTrade() {
   const profitRate = calcProfitRate(Number(watchBuyPrice), Number(watchSellPrice))
   const holdingDays = calcHoldingDays(watchBuyDate, watchSellDate)
 
-  // ✅ 이미지 추가 공통 함수
+  const hasSell = watchBuyPrice && watchSellPrice && watchQuantity
+  const buyFee = hasSell ? Math.round(Number(watchBuyPrice) * Number(watchQuantity) * (feeRate.buy / 100)) : 0
+  const sellFee = hasSell ? Math.round(Number(watchSellPrice) * Number(watchQuantity) * (feeRate.sell / 100)) : 0
+  const tax = hasSell && profitAmount > 0 ? Math.round(profitAmount * (taxRate / 100)) : 0
+  const totalFee = buyFee + sellFee + tax
+  const netProfitAmount = hasSell ? profitAmount - totalFee : 0
+  const netProfitRate = hasSell && Number(watchBuyPrice) && Number(watchQuantity)
+    ? (netProfitAmount / (Number(watchBuyPrice) * Number(watchQuantity))) * 100
+    : 0
+
+  useEffect(() => {
+    const loadData = async () => {
+      const { data: dropData } = await supabase
+        .from('dropdown_options')
+        .select('category, label')
+        .order('sort_order', { ascending: true })
+
+      if (dropData) {
+        const grouped = {}
+        dropData.forEach(({ category, label }) => {
+          if (!grouped[category]) grouped[category] = []
+          grouped[category].push(label)
+        })
+        setOpts(prev => ({ ...prev, ...grouped }))
+      }
+
+      const { data: settings } = await supabase
+        .from('app_settings')
+        .select('buy_fee_rate, sell_fee_rate, tax_rate')
+        .eq('id', 1)
+        .single()
+
+      if (settings) {
+        setFeeRate({ buy: settings.buy_fee_rate ?? 0.015, sell: settings.sell_fee_rate ?? 0.015 })
+        setTaxRate(settings.tax_rate ?? 0.2)
+      }
+
+      setOptsLoading(false)
+    }
+    loadData()
+  }, [])
+
   const addImages = useCallback((files) => {
     const imageOnly = files.filter(f => f.type.startsWith('image/'))
     if (imageOnly.length === 0) return
     setImageFiles(prev => [...prev, ...imageOnly])
-    const previews = imageOnly.map(f => URL.createObjectURL(f))
-    setImagePreviews(prev => [...prev, ...previews])
+    setImagePreviews(prev => [...prev, ...imageOnly.map(f => URL.createObjectURL(f))])
   }, [])
 
-  // ✅ 드래그앤드롭
-  const onDrop = useCallback((acceptedFiles) => {
-    addImages(acceptedFiles)
-  }, [addImages])
+  const onDrop = useCallback((acceptedFiles) => addImages(acceptedFiles), [addImages])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'image/*': [] },
-    multiple: true,
+    onDrop, accept: { 'image/*': [] }, multiple: true,
   })
 
-  // ✅ 붙여넣기(Ctrl+V) 이벤트 리스너
   useEffect(() => {
     const handlePaste = (e) => {
       const items = e.clipboardData?.items
       if (!items) return
-
       const imageItems = Array.from(items).filter(item => item.type.startsWith('image/'))
       if (imageItems.length === 0) return
-
       const files = imageItems.map(item => item.getAsFile()).filter(Boolean)
-      // 붙여넣기 이미지는 파일명이 없으므로 이름 지정
       const namedFiles = files.map((file, i) => {
         const ext = file.type.split('/')[1] || 'png'
         return new File([file], `paste_${Date.now()}_${i}.${ext}`, { type: file.type })
       })
       addImages(namedFiles)
-
-      // 붙여넣기 성공 안내 표시
       setPasteHint(true)
       setTimeout(() => setPasteHint(false), 2000)
     }
-
     window.addEventListener('paste', handlePaste)
     return () => window.removeEventListener('paste', handlePaste)
   }, [addImages])
 
-  // ✅ 이미지 제거
   const removeImage = (index) => {
     URL.revokeObjectURL(imagePreviews[index])
     setImageFiles(prev => prev.filter((_, i) => i !== index))
@@ -173,9 +217,7 @@ export default function NewTrade() {
   const addNewsLink = () => setNewsLinks([...newsLinks, ''])
   const removeNewsLink = (i) => setNewsLinks(newsLinks.filter((_, idx) => idx !== i))
   const updateNewsLink = (i, val) => {
-    const updated = [...newsLinks]
-    updated[i] = val
-    setNewsLinks(updated)
+    const updated = [...newsLinks]; updated[i] = val; setNewsLinks(updated)
   }
 
   const onSubmit = async (data) => {
@@ -186,46 +228,46 @@ export default function NewTrade() {
     if (!marketCondition) { setError('시장상황을 선택해 주세요.'); setLoading(false); return }
 
     try {
-      // ✅ 1. 이미지 Supabase Storage에 업로드
       const uploadedPaths = []
       for (const file of imageFiles) {
         const ext = file.name.split('.').pop() || 'png'
         const path = `charts/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-        const { error: uploadError } = await supabase.storage
-          .from('chart-images')
-          .upload(path, file)
-        if (uploadError) {
-          console.error('이미지 업로드 실패:', uploadError.message)
-          // 이미지 업로드 실패해도 저장은 계속 진행 (선택사항)
-        } else {
-          uploadedPaths.push(path)
-        }
+        const { error: uploadError } = await supabase.storage.from('chart-images').upload(path, file)
+        if (!uploadError) uploadedPaths.push(path)
       }
 
-      // ✅ 2. DB에 저장
       const payload = {
         stock_name: data.stock_name,
+        market: market || null,
         buy_date: data.buy_date,
         buy_price: Number(data.buy_price),
         sell_date: data.sell_date || null,
         sell_price: data.sell_price ? Number(data.sell_price) : null,
         quantity: Number(data.quantity),
         position_size: data.position_size ? Number(data.position_size) : null,
-        profit_amount: profitAmount || null,
-        profit_rate: profitRate || null,
+        profit_amount: hasSell ? profitAmount : null,
+        profit_rate: hasSell ? profitRate : null,
         holding_days: holdingDays || null,
+        fee: hasSell ? totalFee : null,
+        tax: hasSell ? tax : null,
+        net_profit_amount: hasSell ? netProfitAmount : null,
+        net_profit_rate: hasSell ? netProfitRate : null,
         sector,
         themes: themes.length > 0 ? themes : null,
         trade_style: tradeStyle,
         market_condition: marketCondition,
         trade_grade: tradeGrade || null,
         emotion_state: emotionState || null,
+        emotion_before: emotionBefore.length > 0 ? emotionBefore : null,
+        emotion_after: emotionAfter.length > 0 ? emotionAfter : null,
         sell_reason: sellReason || null,
         mistake_types: mistakeTypes.length > 0 ? mistakeTypes : null,
+        mistake_buy: mistakeBuy.length > 0 ? mistakeBuy : null,
+        mistake_sell: mistakeSell.length > 0 ? mistakeSell : null,
         material_context: data.material_context || null,
         entry_reason: data.entry_reason || null,
         stop_loss_plan: data.stop_loss_plan || null,
-        response_record: data.response_record || null,
+        trade_log: data.trade_log || null,
         reflection_good: data.reflection_good || null,
         reflection_bad: data.reflection_bad || null,
         reflection_next: data.reflection_next || null,
@@ -266,12 +308,17 @@ export default function NewTrade() {
       <form onSubmit={handleSubmit(onSubmit)}>
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px' }}>
 
+          {/* ① 기본 거래 정보 */}
           <SectionTitle>① 기본 거래 정보</SectionTitle>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
             <div>
               <Label required>종목명</Label>
               <input style={inputStyle} {...register('stock_name', { required: '종목명을 입력하세요' })} placeholder="예: 삼성전자" />
-              {errors.stock_name && <p style={{ color: '#ef4444', fontSize: '14px', marginTop: '2px' }}>{errors.stock_name.message}</p>}
+              {errors.stock_name && <p style={{ color: '#ef4444', fontSize: '13px', marginTop: '2px' }}>{errors.stock_name.message}</p>}
+            </div>
+            <div>
+              <Label>시장 구분</Label>
+              <MarketSelect value={market} onChange={setMarket} />
             </div>
             <div>
               <Label required>매수일</Label>
@@ -299,75 +346,166 @@ export default function NewTrade() {
             </div>
           </div>
 
-          {(watchBuyPrice && watchSellPrice && watchQuantity) && (
+          {/* 자동계산 미리보기 */}
+          {hasSell && (
             <div style={{
               background: '#f0f9ff', border: '1px solid #bae6fd',
               borderRadius: '8px', padding: '12px 16px', marginTop: '12px',
-              display: 'flex', gap: '24px', flexWrap: 'wrap',
             }}>
-              <span style={{ fontSize: '14px', color: '#0369a1' }}>
-                💰 수익금: <strong>{profitAmount >= 0 ? '+' : ''}{profitAmount.toLocaleString()}원</strong>
-              </span>
-              <span style={{ fontSize: '14px', color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
-                📈 수익률: <strong>{profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%</strong>
-              </span>
-              {holdingDays >= 0 && (
+              <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '8px' }}>
                 <span style={{ fontSize: '14px', color: '#0369a1' }}>
-                  📅 보유기간: <strong>{holdingDays}일</strong>
+                  💰 수익금: <strong style={{ color: profitAmount >= 0 ? '#2563eb' : '#dc2626' }}>
+                    {profitAmount >= 0 ? '+' : ''}{profitAmount.toLocaleString()}원
+                  </strong>
                 </span>
-              )}
+                <span style={{ fontSize: '14px', color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
+                  📈 수익률: <strong>{profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%</strong>
+                </span>
+                {holdingDays >= 0 && (
+                  <span style={{ fontSize: '14px', color: '#0369a1' }}>
+                    📅 보유기간: <strong>{holdingDays}일</strong>
+                  </span>
+                )}
+              </div>
+              <div style={{ borderTop: '1px solid #bae6fd', paddingTop: '8px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '13px', color: '#64748b' }}>
+                  수수료: <strong>{totalFee.toLocaleString()}원</strong>
+                  <span style={{ color: '#94a3b8', marginLeft: '4px' }}>
+                    (매수 {buyFee.toLocaleString()} + 매도 {sellFee.toLocaleString()} + 세금 {tax.toLocaleString()})
+                  </span>
+                </span>
+                <span style={{ fontSize: '13px', color: netProfitAmount >= 0 ? '#2563eb' : '#dc2626', fontWeight: 600 }}>
+                  순수익: {netProfitAmount >= 0 ? '+' : ''}{netProfitAmount.toLocaleString()}원
+                  ({netProfitRate >= 0 ? '+' : ''}{netProfitRate.toFixed(2)}%)
+                </span>
+              </div>
             </div>
           )}
 
+          {/* ② 분류 정보 */}
           <SectionTitle>② 분류 정보</SectionTitle>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div>
-              <Label required>섹터</Label>
-              <SingleSelect options={SECTORS} value={sector} onChange={setSector} />
+          {optsLoading ? (
+            <p style={{ color: '#94a3b8', fontSize: '14px' }}>선택지 불러오는 중...</p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+              <div>
+                <Label required>섹터</Label>
+                <select style={selectStyle} value={sector} onChange={e => setSector(e.target.value)}>
+                  <option value="">섹터 선택...</option>
+                  {opts.sector.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label required>매매방식</Label>
+                <select style={selectStyle} value={tradeStyle} onChange={e => setTradeStyle(e.target.value)}>
+                  <option value="">매매방식 선택...</option>
+                  {opts.trade_style.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label required>시장상황</Label>
+                <select style={selectStyle} value={marketCondition} onChange={e => setMarketCondition(e.target.value)}>
+                  <option value="">시장상황 선택...</option>
+                  {opts.market_condition.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label>테마 (복수 선택)</Label>
+                <MultiSelect options={opts.theme} selected={themes} onChange={setThemes} color="#8b5cf6" />
+              </div>
             </div>
-            <div>
-              <Label>테마 (복수 선택 가능)</Label>
-              <MultiSelect options={THEMES} selected={themes} onChange={setThemes} color="#8b5cf6" />
-            </div>
-            <div>
-              <Label required>매매방식</Label>
-              <SingleSelect options={TRADE_STYLES} value={tradeStyle} onChange={setTradeStyle} />
-            </div>
-            <div>
-              <Label required>시장상황</Label>
-              <SingleSelect options={MARKET_CONDITIONS} value={marketCondition} onChange={setMarketCondition}
-                colorMap={{ '상승장': '#2563eb', '하락장': '#dc2626', '횡보장': '#6b7280' }} />
-            </div>
-          </div>
+          )}
 
+          {/* ③ 정성 평가 */}
           <SectionTitle>③ 정성 평가</SectionTitle>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div>
-              <Label>매매등급 (계획 대비 실행 품질)</Label>
-              <SingleSelect options={GRADES} value={tradeGrade} onChange={setTradeGrade}
-                colorMap={{ A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#dc2626' }} />
-            </div>
-            <div>
-              <Label>감정상태</Label>
-              <SingleSelect options={EMOTIONS} value={emotionState} onChange={setEmotionState} />
-            </div>
-            <div>
-              <Label>매도이유</Label>
-              <SingleSelect options={SELL_REASONS} value={sellReason} onChange={setSellReason} />
-            </div>
-            <div>
-              <Label>실수유형 (복수 선택 가능)</Label>
-              <MultiSelect options={MISTAKE_TYPES} selected={mistakeTypes} onChange={setMistakeTypes} color="#ef4444" />
-            </div>
-          </div>
+          {optsLoading ? (
+            <p style={{ color: '#94a3b8', fontSize: '14px' }}>선택지 불러오는 중...</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
+              {/* 매매등급 — 드롭다운 */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                <div>
+                  <Label>매매등급 (계획 대비 실행 품질)</Label>
+                  <select
+                    style={{
+                      ...selectStyle,
+                      color: tradeGrade ? GRADE_COLORS[tradeGrade] : '#374151',
+                      fontWeight: tradeGrade ? 600 : 400,
+                    }}
+                    value={tradeGrade}
+                    onChange={e => setTradeGrade(e.target.value)}
+                  >
+                    <option value="">등급 선택...</option>
+                    {GRADES.map(g => (
+                      <option key={g} value={g} style={{ color: GRADE_COLORS[g], fontWeight: 600 }}>
+                        {g}등급
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 감정상태 — 드롭다운 */}
+                <div>
+                  <Label>감정상태 (매매 중 전반적)</Label>
+                  <select style={selectStyle} value={emotionState} onChange={e => setEmotionState(e.target.value)}>
+                    <option value="">감정상태 선택...</option>
+                    {opts.emotion_before.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+
+                {/* 매도이유 — 드롭다운 */}
+                <div>
+                  <Label>매도이유</Label>
+                  <select style={selectStyle} value={sellReason} onChange={e => setSellReason(e.target.value)}>
+                    <option value="">매도이유 선택...</option>
+                    {opts.sell_reason.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* 감정 — 복수선택 버튼 태그 */}
+              <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '12px', border: '1px solid #e2e8f0' }}>
+                <div style={{ marginBottom: '12px' }}>
+                  <Label>매수 전 감정 (복수 선택)</Label>
+                  <MultiSelect options={opts.emotion_before} selected={emotionBefore} onChange={setEmotionBefore} color="#f59e0b" />
+                </div>
+                <div>
+                  <Label>매도 후 감정 (복수 선택)</Label>
+                  <MultiSelect options={opts.emotion_after} selected={emotionAfter} onChange={setEmotionAfter} color="#10b981" />
+                </div>
+              </div>
+
+              {/* 실수유형 — 복수선택 버튼 태그 */}
+              <div style={{ background: '#fff5f5', borderRadius: '8px', padding: '12px', border: '1px solid #fecaca' }}>
+                <div style={{ marginBottom: '12px' }}>
+                  <Label>실수유형 전체 (복수 선택)</Label>
+                  <MultiSelect
+                    options={[...new Set([...(opts.mistake_buy || []), ...(opts.mistake_sell || [])])]}
+                    selected={mistakeTypes} onChange={setMistakeTypes} color="#ef4444"
+                  />
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <Label>매수 실수 (복수 선택)</Label>
+                  <MultiSelect options={opts.mistake_buy || []} selected={mistakeBuy} onChange={setMistakeBuy} color="#dc2626" />
+                </div>
+                <div>
+                  <Label>매도 실수 (복수 선택)</Label>
+                  <MultiSelect options={opts.mistake_sell || []} selected={mistakeSell} onChange={setMistakeSell} color="#b91c1c" />
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* ④ 서술 기록 */}
           <SectionTitle>④ 서술 기록</SectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {[
               { name: 'material_context', label: '재료 및 시장상황', placeholder: '왜 이 종목이 움직였는지, 시장 상황은 어땠는지 기록하세요.' },
               { name: 'entry_reason', label: '진입근거 (기술적 + 재료적)', placeholder: '차트 패턴, 거래량, 재료 등 진입 근거를 기록하세요.' },
               { name: 'stop_loss_plan', label: '손절선 사전 설정', placeholder: '진입 전 설정한 손절 기준을 기록하세요.' },
-              { name: 'response_record', label: '대응 기록', placeholder: '매매 중 어떻게 대응했는지 기록하세요.' },
+              { name: 'trade_log', label: '대응 기록', placeholder: '매매 중 어떻게 대응했는지 기록하세요.' },
             ].map(field => (
               <div key={field.name}>
                 <Label>{field.label}</Label>
@@ -394,10 +532,8 @@ export default function NewTrade() {
             </div>
           </div>
 
-          {/* ✅ 차트 이미지 섹션 */}
+          {/* ⑤ 차트 이미지 */}
           <SectionTitle>⑤ 차트 이미지</SectionTitle>
-
-          {/* 미리보기 */}
           {imagePreviews.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
               {imagePreviews.map((url, i) => (
@@ -406,47 +542,31 @@ export default function NewTrade() {
                     width: '100%', height: '100%', objectFit: 'cover',
                     borderRadius: '8px', border: '1px solid #bfdbfe',
                   }} />
-                  <button
-                    type="button"
-                    onClick={() => removeImage(i)}
-                    style={{
-                      position: 'absolute', top: '-6px', right: '-6px',
-                      background: '#dc2626', color: '#fff', border: 'none',
-                      borderRadius: '50%', width: '20px', height: '20px',
-                      cursor: 'pointer', fontSize: '14px',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                  >✕</button>
+                  <button type="button" onClick={() => removeImage(i)} style={{
+                    position: 'absolute', top: '-6px', right: '-6px',
+                    background: '#dc2626', color: '#fff', border: 'none',
+                    borderRadius: '50%', width: '20px', height: '20px',
+                    cursor: 'pointer', fontSize: '14px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>✕</button>
                 </div>
               ))}
             </div>
           )}
-
-          {/* 드래그앤드롭 영역 */}
-          <div
-            {...getRootProps()}
-            style={{
-              border: `2px dashed ${isDragActive ? '#2563eb' : '#cbd5e1'}`,
-              borderRadius: '12px', padding: '28px', textAlign: 'center',
-              cursor: 'pointer',
-              background: isDragActive ? '#eff6ff' : pasteHint ? '#f0fdf4' : '#f8fafc',
-              transition: 'all 0.2s',
-            }}
-          >
+          <div {...getRootProps()} style={{
+            border: `2px dashed ${isDragActive ? '#2563eb' : '#cbd5e1'}`,
+            borderRadius: '12px', padding: '28px', textAlign: 'center', cursor: 'pointer',
+            background: isDragActive ? '#eff6ff' : pasteHint ? '#f0fdf4' : '#f8fafc',
+            transition: 'all 0.2s',
+          }}>
             <input {...getInputProps()} />
-            <div style={{ fontSize: '28px', marginBottom: '6px' }}>
-              {pasteHint ? '✅' : '📸'}
-            </div>
+            <div style={{ fontSize: '28px', marginBottom: '6px' }}>{pasteHint ? '✅' : '📸'}</div>
             {pasteHint ? (
-              <div style={{ fontSize: '14px', color: '#16a34a', fontWeight: 600 }}>
-                이미지가 붙여넣어졌습니다!
-              </div>
+              <div style={{ fontSize: '14px', color: '#16a34a', fontWeight: 600 }}>이미지가 붙여넣어졌습니다!</div>
             ) : (
               <>
                 <div style={{ fontSize: '14px', color: '#64748b' }}>
-                  {isDragActive
-                    ? '여기에 놓으세요!'
-                    : '차트 이미지를 드래그하거나 클릭해서 추가'}
+                  {isDragActive ? '여기에 놓으세요!' : '차트 이미지를 드래그하거나 클릭해서 추가'}
                 </div>
                 <div style={{ fontSize: '14px', color: '#94a3b8', marginTop: '4px' }}>
                   📋 차트 캡처 후 Ctrl+V 붙여넣기도 가능합니다
@@ -455,6 +575,7 @@ export default function NewTrade() {
             )}
           </div>
 
+          {/* ⑥ 뉴스/공시 링크 */}
           <SectionTitle>⑥ 뉴스/공시 링크</SectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {newsLinks.map((link, i) => (
