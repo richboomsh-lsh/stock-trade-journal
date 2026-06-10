@@ -3,7 +3,6 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { formatKRW, getProfitColor, gradeColors } from '../lib/tradeHelpers'
 
-// 모바일 감지 훅
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 640)
   useEffect(() => {
@@ -24,7 +23,7 @@ function Field({ label, value, color }) {
   )
 }
 
-function TagList({ label, items }) {
+function TagList({ label, items, color }) {
   if (!items || items.length === 0) return null
   return (
     <div style={{ marginBottom: '12px' }}>
@@ -32,8 +31,11 @@ function TagList({ label, items }) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
         {items.map((item, i) => (
           <span key={i} style={{
-            padding: '2px 10px', background: '#f1f5f9', color: '#475569',
-            borderRadius: '20px', fontSize: '14px', border: '1px solid #e2e8f0',
+            padding: '2px 10px',
+            background: color ? color + '15' : '#f1f5f9',
+            color: color || '#475569',
+            borderRadius: '20px', fontSize: '14px',
+            border: `1px solid ${color ? color + '40' : '#e2e8f0'}`,
           }}>{item}</span>
         ))}
       </div>
@@ -104,10 +106,13 @@ export default function TradeDetail() {
   const isProfit = trade.profit_rate > 0
   const isLoss = trade.profit_rate < 0
 
+  // 순수익 표시 여부
+  const hasNetProfit = trade.net_profit_amount != null || trade.net_profit_rate != null
+
   return (
     <div style={{ padding: isMobile ? '0 0 80px' : '0' }}>
 
-      {/* ✅ 상단 버튼 - 모바일에서 줄바꿈 허용 */}
+      {/* 상단 버튼 */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '8px',
         marginBottom: '16px', flexWrap: 'wrap',
@@ -139,7 +144,7 @@ export default function TradeDetail() {
         }}>🗑️ 삭제</button>
       </div>
 
-      {/* ✅ 핵심 수익 카드 - 모바일 2x2 그리드 */}
+      {/* 핵심 수익 카드 */}
       <div style={{
         background: trade.profit_rate == null ? '#f8fafc'
           : isProfit ? '#eff6ff' : isLoss ? '#fef2f2' : '#f8fafc',
@@ -148,7 +153,7 @@ export default function TradeDetail() {
         borderRadius: '16px', padding: isMobile ? '16px' : '24px',
         marginBottom: '12px',
       }}>
-        {/* 종목명 + 등급/섹터 */}
+        {/* 종목명 + 등급/섹터/시장 */}
         <div style={{ marginBottom: '14px' }}>
           <div style={{ fontSize: isMobile ? '22px' : '26px', fontWeight: 700, color: '#1e293b', marginBottom: '6px' }}>
             {trade.stock_name}
@@ -163,6 +168,12 @@ export default function TradeDetail() {
                 borderRadius: '6px', fontSize: '14px', fontWeight: 700,
               }}>등급 {trade.trade_grade}</span>
             )}
+            {trade.market && (
+              <span style={{
+                padding: '2px 10px', background: '#1e293b',
+                color: '#fff', borderRadius: '6px', fontSize: '13px', fontWeight: 600,
+              }}>{trade.market}</span>
+            )}
             {trade.sector && (
               <span style={{
                 padding: '2px 10px', background: '#f1f5f9',
@@ -172,11 +183,12 @@ export default function TradeDetail() {
           </div>
         </div>
 
-        {/* ✅ 수익률/수익금/보유기간 - 모바일 2열 그리드 */}
+        {/* 수익률/수익금/보유기간 */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)',
           gap: '12px',
+          marginBottom: hasNetProfit ? '12px' : 0,
         }}>
           {trade.profit_rate != null && (
             <div>
@@ -201,18 +213,58 @@ export default function TradeDetail() {
             </div>
           </div>
         </div>
+
+        {/* 수수료·세금·순수익 */}
+        {hasNetProfit && (
+          <div style={{
+            display: 'flex', gap: '16px', flexWrap: 'wrap',
+            paddingTop: '12px', borderTop: '1px solid #e2e8f0',
+          }}>
+            {trade.fee != null && (
+              <div>
+                <div style={{ fontSize: '13px', color: '#94a3b8' }}>수수료</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: '#dc2626' }}>
+                  -{formatKRW(trade.fee)}원
+                </div>
+              </div>
+            )}
+            {trade.tax != null && trade.tax > 0 && (
+              <div>
+                <div style={{ fontSize: '13px', color: '#94a3b8' }}>세금</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: '#dc2626' }}>
+                  -{formatKRW(trade.tax)}원
+                </div>
+              </div>
+            )}
+            {trade.net_profit_amount != null && (
+              <div>
+                <div style={{ fontSize: '13px', color: '#94a3b8' }}>순수익금</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: getProfitColor(trade.net_profit_amount) }}>
+                  {trade.net_profit_amount >= 0 ? '+' : ''}{formatKRW(trade.net_profit_amount)}원
+                </div>
+              </div>
+            )}
+            {trade.net_profit_rate != null && (
+              <div>
+                <div style={{ fontSize: '13px', color: '#94a3b8' }}>순수익률</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: getProfitColor(trade.net_profit_rate) }}>
+                  {trade.net_profit_rate >= 0 ? '+' : ''}{Number(trade.net_profit_rate).toFixed(2)}%
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* ✅ 본문 - 모바일은 1열, PC는 2열 */}
+      {/* 본문 - 모바일 1열, PC 2열 */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
         gap: '0 16px',
       }}>
-        {/* 왼쪽 (or 모바일 전체) */}
+        {/* 왼쪽 */}
         <div>
           <Section title="거래 정보">
-            {/* ✅ 날짜/가격 - 모바일에서 각 행을 flex로 나란히 */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <Field label="매수일" value={trade.buy_date} />
@@ -235,27 +287,29 @@ export default function TradeDetail() {
               <Field label="매매방식" value={trade.trade_style} />
               <Field label="시장상황" value={trade.market_condition} />
             </div>
-            <TagList label="테마" items={trade.themes} />
+            <TagList label="테마" items={trade.themes} color="#7c3aed" />
           </Section>
 
           <Section title="정성 평가">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
               <Field label="매매등급" value={trade.trade_grade} color={gradeColors[trade.trade_grade]} />
-              <Field label="감정상태" value={trade.emotion_state} />
               <Field label="매도이유" value={trade.sell_reason} />
             </div>
-            <TagList label="실수유형" items={trade.mistake_types} />
+            <TagList label="매수 전 감정" items={trade.emotion_before} color="#f59e0b" />
+            <TagList label="매도 후 감정" items={trade.emotion_after} color="#8b5cf6" />
+            <TagList label="매수 실수" items={trade.mistake_buy} color="#dc2626" />
+            <TagList label="매도 실수" items={trade.mistake_sell} color="#ea580c" />
           </Section>
         </div>
 
-        {/* 오른쪽 (모바일에선 아래로 이어짐) */}
+        {/* 오른쪽 */}
         <div>
-          {(trade.material_context || trade.entry_reason || trade.stop_loss_plan || trade.response_record) && (
+          {(trade.material_context || trade.entry_reason || trade.stop_loss_plan || trade.trade_log) && (
             <Section title="매매 근거">
               <Field label="재료 및 시장상황" value={trade.material_context} />
               <Field label="진입근거" value={trade.entry_reason} />
               <Field label="손절선 설정" value={trade.stop_loss_plan} />
-              <Field label="대응 기록" value={trade.response_record} />
+              <Field label="대응 기록" value={trade.trade_log} />
             </Section>
           )}
 
@@ -296,14 +350,12 @@ export default function TradeDetail() {
         </div>
       </div>
 
-      {/* ✅ 차트 이미지 - 모바일 1열, PC 자동 */}
+      {/* 차트 이미지 */}
       {imageUrls.length > 0 && (
         <Section title={`차트 이미지 (${imageUrls.length}장)`}>
           <div style={{
             display: 'grid',
-            gridTemplateColumns: isMobile
-              ? '1fr'
-              : 'repeat(auto-fill, minmax(200px, 1fr))',
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(200px, 1fr))',
             gap: '12px',
           }}>
             {imageUrls.map((url, i) => (
