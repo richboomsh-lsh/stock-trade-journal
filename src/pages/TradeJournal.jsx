@@ -17,7 +17,7 @@ export default function TradeJournal() {
   const isMobile = useIsMobile()
   const [trades, setTrades] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState({ sector: '', trade_style: '', trade_grade: '' })
+  const [filter, setFilter] = useState({ sector: '', trade_style: '', trade_grade: '', market: '' })
 
   useEffect(() => { fetchTrades() }, [])
 
@@ -41,15 +41,18 @@ export default function TradeJournal() {
     if (filter.sector && t.sector !== filter.sector) return false
     if (filter.trade_style && t.trade_style !== filter.trade_style) return false
     if (filter.trade_grade && t.trade_grade !== filter.trade_grade) return false
+    if (filter.market && t.market !== filter.market) return false
     return true
   })
 
+  // ✅ 순수익 기준으로 통계 계산
   const completedTrades = trades.filter(t => t.sell_price)
-  const wins = completedTrades.filter(t => t.profit_rate > 0)
+  const wins = completedTrades.filter(t => (t.net_profit_rate ?? t.profit_rate) > 0)
   const winRate = completedTrades.length > 0
     ? (wins.length / completedTrades.length * 100).toFixed(0) : 0
-  const avgProfit = completedTrades.length > 0
-    ? (completedTrades.reduce((sum, t) => sum + (t.profit_rate || 0), 0) / completedTrades.length).toFixed(2) : 0
+  const avgNetProfit = completedTrades.length > 0
+    ? (completedTrades.reduce((sum, t) => sum + (t.net_profit_rate ?? t.profit_rate ?? 0), 0) / completedTrades.length).toFixed(2)
+    : 0
 
   const sel = {
     padding: '7px 10px', border: '1px solid #d1d5db',
@@ -58,6 +61,8 @@ export default function TradeJournal() {
     flex: isMobile ? '1 1 calc(50% - 4px)' : 'none',
     minWidth: isMobile ? '0' : 'auto',
   }
+
+  const hasFilter = filter.sector || filter.trade_style || filter.trade_grade || filter.market
 
   return (
     <div style={{ paddingBottom: isMobile ? '80px' : '0' }}>
@@ -75,7 +80,7 @@ export default function TradeJournal() {
         }}>+ 새 매매</Link>
       </div>
 
-      {/* ✅ 통계 카드 - 모바일 2x2 그리드 */}
+      {/* ✅ 통계 카드 — 순수익 기준 */}
       {completedTrades.length > 0 && (
         <div style={{
           display: 'grid',
@@ -85,7 +90,7 @@ export default function TradeJournal() {
           {[
             { label: '총 거래', value: `${trades.length}건` },
             { label: '승률', value: `${winRate}%`, color: winRate >= 50 ? '#2563eb' : '#dc2626' },
-            { label: '평균 수익률', value: `${avgProfit >= 0 ? '+' : ''}${avgProfit}%`, color: getProfitColor(Number(avgProfit)) },
+            { label: '평균 순수익률', value: `${avgNetProfit >= 0 ? '+' : ''}${avgNetProfit}%`, color: getProfitColor(Number(avgNetProfit)) },
             { label: '완료 거래', value: `${completedTrades.length}건` },
           ].map(card => (
             <div key={card.label} style={{
@@ -101,8 +106,14 @@ export default function TradeJournal() {
         </div>
       )}
 
-      {/* ✅ 필터 - 모바일 2열 wrapping */}
+      {/* ✅ 필터 — 시장 구분 추가 */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap' }}>
+        {/* ✅ 시장 구분 필터 (코스피/코스닥) */}
+        <select style={sel} value={filter.market} onChange={e => setFilter({ ...filter, market: e.target.value })}>
+          <option value="">전체 시장</option>
+          <option value="코스피">코스피</option>
+          <option value="코스닥">코스닥</option>
+        </select>
         <select style={sel} value={filter.sector} onChange={e => setFilter({ ...filter, sector: e.target.value })}>
           <option value="">전체 섹터</option>
           {['에너지','반도체','바이오','금융','소비재','화학','철강','건설','운송','기타'].map(s => (
@@ -119,8 +130,8 @@ export default function TradeJournal() {
           <option value="">전체 등급</option>
           {['A','B','C','D'].map(g => <option key={g} value={g}>등급 {g}</option>)}
         </select>
-        {(filter.sector || filter.trade_style || filter.trade_grade) && (
-          <button onClick={() => setFilter({ sector: '', trade_style: '', trade_grade: '' })} style={{
+        {hasFilter && (
+          <button onClick={() => setFilter({ sector: '', trade_style: '', trade_grade: '', market: '' })} style={{
             ...sel,
             background: '#fee2e2', border: '1px solid #fca5a5', color: '#dc2626',
             flex: isMobile ? '1 1 100%' : 'none',
@@ -144,95 +155,116 @@ export default function TradeJournal() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {filtered.map(trade => (
-            <Link key={trade.id} to={`/trade/${trade.id}`} style={{ textDecoration: 'none' }}>
-              <div
-                style={{
-                  background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px',
-                  padding: isMobile ? '14px' : '16px 18px',
-                  cursor: 'pointer', transition: 'box-shadow 0.15s, border-color 0.15s',
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'
-                  e.currentTarget.style.borderColor = '#93c5fd'
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.boxShadow = 'none'
-                  e.currentTarget.style.borderColor = '#e2e8f0'
-                }}
-              >
-                {/* ✅ 상단: 종목명 + 태그 + 수익률 한 줄 */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
-                    <span style={{ fontWeight: 700, fontSize: isMobile ? '15px' : '16px', color: '#1e293b', whiteSpace: 'nowrap' }}>
-                      {trade.stock_name}
-                    </span>
-                    {trade.trade_grade && (
-                      <span style={{
-                        padding: '1px 7px',
-                        background: gradeColors[trade.trade_grade] + '20',
-                        color: gradeColors[trade.trade_grade],
-                        borderRadius: '4px', fontSize: '14px', fontWeight: 700,
-                        border: `1px solid ${gradeColors[trade.trade_grade]}40`,
-                        whiteSpace: 'nowrap',
-                      }}>{trade.trade_grade}</span>
-                    )}
-                    {trade.sector && (
-                      <span style={{
-                        padding: '1px 7px', background: '#f1f5f9',
-                        color: '#64748b', borderRadius: '4px', fontSize: '14px',
-                        whiteSpace: 'nowrap',
-                      }}>{trade.sector}</span>
-                    )}
-                    {trade.trade_style && (
-                      <span style={{
-                        padding: '1px 7px', background: '#eff6ff',
-                        color: '#2563eb', borderRadius: '4px', fontSize: '14px',
-                        whiteSpace: 'nowrap',
-                      }}>{trade.trade_style}</span>
-                    )}
-                  </div>
+          {filtered.map(trade => {
+            // ✅ 순수익 우선, 없으면 기존 수익으로 fallback
+            const displayRate = trade.net_profit_rate ?? trade.profit_rate
+            const displayAmount = trade.net_profit_amount ?? trade.profit_amount
 
-                  {/* 수익률 */}
-                  {trade.profit_rate != null ? (
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: isMobile ? '17px' : '18px', fontWeight: 700, color: getProfitColor(trade.profit_rate) }}>
-                        {trade.profit_rate >= 0 ? '+' : ''}{trade.profit_rate.toFixed(2)}%
-                      </div>
-                      <div style={{ fontSize: '14px', color: '#94a3b8' }}>
-                        {trade.profit_amount >= 0 ? '+' : ''}{formatKRW(trade.profit_amount)}원
-                      </div>
+            return (
+              <Link key={trade.id} to={`/trade/${trade.id}`} style={{ textDecoration: 'none' }}>
+                <div
+                  style={{
+                    background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px',
+                    padding: isMobile ? '14px' : '16px 18px',
+                    cursor: 'pointer', transition: 'box-shadow 0.15s, border-color 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'
+                    e.currentTarget.style.borderColor = '#93c5fd'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.boxShadow = 'none'
+                    e.currentTarget.style.borderColor = '#e2e8f0'
+                  }}
+                >
+                  {/* 상단: 종목명 + 태그 + 순수익률 */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+                      <span style={{ fontWeight: 700, fontSize: isMobile ? '15px' : '16px', color: '#1e293b', whiteSpace: 'nowrap' }}>
+                        {trade.stock_name}
+                      </span>
+                      {/* ✅ 시장 구분 배지 */}
+                      {trade.market && (
+                        <span style={{
+                          padding: '1px 7px',
+                          background: trade.market === '코스피' ? '#f0fdf4' : '#faf5ff',
+                          color: trade.market === '코스피' ? '#16a34a' : '#7c3aed',
+                          borderRadius: '4px', fontSize: '13px', fontWeight: 600,
+                          border: `1px solid ${trade.market === '코스피' ? '#bbf7d0' : '#e9d5ff'}`,
+                          whiteSpace: 'nowrap',
+                        }}>{trade.market}</span>
+                      )}
+                      {trade.trade_grade && (
+                        <span style={{
+                          padding: '1px 7px',
+                          background: gradeColors[trade.trade_grade] + '20',
+                          color: gradeColors[trade.trade_grade],
+                          borderRadius: '4px', fontSize: '14px', fontWeight: 700,
+                          border: `1px solid ${gradeColors[trade.trade_grade]}40`,
+                          whiteSpace: 'nowrap',
+                        }}>{trade.trade_grade}</span>
+                      )}
+                      {trade.sector && (
+                        <span style={{
+                          padding: '1px 7px', background: '#f1f5f9',
+                          color: '#64748b', borderRadius: '4px', fontSize: '14px',
+                          whiteSpace: 'nowrap',
+                        }}>{trade.sector}</span>
+                      )}
+                      {trade.trade_style && (
+                        <span style={{
+                          padding: '1px 7px', background: '#eff6ff',
+                          color: '#2563eb', borderRadius: '4px', fontSize: '14px',
+                          whiteSpace: 'nowrap',
+                        }}>{trade.trade_style}</span>
+                      )}
                     </div>
-                  ) : (
-                    <span style={{ fontSize: '14px', color: '#94a3b8', flexShrink: 0 }}>미완료</span>
-                  )}
-                </div>
 
-                {/* ✅ 하단: 날짜/가격 정보 + 삭제 버튼 */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '14px', color: '#64748b' }}>
-                    <span>매수 {trade.buy_date} · {formatKRW(trade.buy_price)}원</span>
-                    {trade.sell_date && (
-                      <span>매도 {trade.sell_date} · {formatKRW(trade.sell_price)}원</span>
+                    {/* ✅ 순수익률 표시 */}
+                    {displayRate != null ? (
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: isMobile ? '17px' : '18px', fontWeight: 700, color: getProfitColor(displayRate) }}>
+                          {displayRate >= 0 ? '+' : ''}{Number(displayRate).toFixed(2)}%
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#94a3b8' }}>
+                          {displayAmount >= 0 ? '+' : ''}{formatKRW(displayAmount)}원
+                        </div>
+                        {/* ✅ 순수익임을 표시 (net_profit_rate가 있을 때만) */}
+                        {trade.net_profit_rate != null && (
+                          <div style={{ fontSize: '11px', color: '#cbd5e1' }}>순수익</div>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: '14px', color: '#94a3b8', flexShrink: 0 }}>미완료</span>
                     )}
-                    <span style={{ color: '#94a3b8' }}>
-                      {trade.holding_days != null ? `보유 ${trade.holding_days}일` : ''}
-                      {trade.quantity ? ` · ${trade.quantity.toLocaleString()}주` : ''}
-                    </span>
                   </div>
-                  <button
-                    onClick={(e) => deleteTrade(trade.id, e)}
-                    style={{
-                      padding: '5px 10px', background: '#fee2e2',
-                      border: '1px solid #fca5a5', borderRadius: '6px',
-                      cursor: 'pointer', color: '#dc2626',
-                      fontSize: '14px', flexShrink: 0,
-                    }}
-                  >삭제</button>
+
+                  {/* 하단: 날짜/가격 정보 + 삭제 버튼 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '14px', color: '#64748b' }}>
+                      <span>매수 {trade.buy_date} · {formatKRW(trade.buy_price)}원</span>
+                      {trade.sell_date && (
+                        <span>매도 {trade.sell_date} · {formatKRW(trade.sell_price)}원</span>
+                      )}
+                      <span style={{ color: '#94a3b8' }}>
+                        {trade.holding_days != null ? `보유 ${trade.holding_days}일` : ''}
+                        {trade.quantity ? ` · ${trade.quantity.toLocaleString()}주` : ''}
+                      </span>
+                    </div>
+                    <button
+                      onClick={(e) => deleteTrade(trade.id, e)}
+                      style={{
+                        padding: '5px 10px', background: '#fee2e2',
+                        border: '1px solid #fca5a5', borderRadius: '6px',
+                        cursor: 'pointer', color: '#dc2626',
+                        fontSize: '14px', flexShrink: 0,
+                      }}
+                    >삭제</button>
+                  </div>
                 </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            )
+          })}
         </div>
       )}
     </div>
