@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { formatKRW, getProfitColor, gradeColors } from '../lib/tradeHelpers'
@@ -65,7 +65,22 @@ export default function TradeDetail() {
   const [trade, setTrade] = useState(null)
   const [loading, setLoading] = useState(true)
   const [imageUrls, setImageUrls] = useState([])
-  const [selectedImage, setSelectedImage] = useState(null)
+
+  // ── 모달 state ──────────────────────────────────────────────
+  const [modalIndex, setModalIndex] = useState(null)
+  const modalRef = useRef(null)
+  const imgRef   = useRef(null)
+
+  const ms = useRef({
+    scale: 1, panX: 0, panY: 0,
+    startX: 0, startY: 0,
+    panStartX: 0, panStartY: 0,
+    pinchDist: null,
+    pinchScale: 1,
+    lastTap: 0,
+    moving: false,
+  })
+  // ────────────────────────────────────────────────────────────
 
   useEffect(() => { fetchTrade() }, [id])
 
@@ -98,15 +113,155 @@ export default function TradeDetail() {
     navigate('/journal')
   }
 
+  // ── 모달 헬퍼 ────────────────────────────────────────────────
+  const applyTransform = () => {
+    if (!imgRef.current) return
+    const { scale: s, panX, panY } = ms.current
+    imgRef.current.style.transform = s <= 1
+      ? 'none'
+      : `scale(${s}) translate(${panX / s}px, ${panY / s}px)`
+  }
+
+  const closeModal = () => setModalIndex(null)
+  const goPrev = () => setModalIndex(i => (i > 0 ? i - 1 : i))
+  const goNext = () => setModalIndex(i => (i < imageUrls.length - 1 ? i + 1 : i))
+
+  // 이미지 바뀔 때마다 줌·이동 초기화
+  useEffect(() => {
+    if (modalIndex === null) return
+    ms.current.scale = 1
+    ms.current.panX  = 0
+    ms.current.panY  = 0
+    requestAnimationFrame(applyTransform)
+  }, [modalIndex])
+
+  // 모달 열릴 때 배경 스크롤 잠금
+  useEffect(() => {
+    if (modalIndex !== null) {
+      document.body.style.overflow = 'hidden'
+      return () => { document.body.style.overflow = '' }
+    }
+  }, [modalIndex !== null])
+
+  // ── 키보드 네비게이션 ────────────────────────────────────────
+  useEffect(() => {
+    if (modalIndex === null) return
+    const handler = (e) => {
+      if (e.key === 'ArrowLeft')       goPrev()
+      else if (e.key === 'ArrowRight') goNext()
+      else if (e.key === 'Escape')     closeModal()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [modalIndex !== null, imageUrls.length])
+
+  // ── 터치 이벤트 (passive:false 필수) ────────────────────────
+  useEffect(() => {
+    if (modalIndex === null || !modalRef.current) return
+    const el = modalRef.current
+    const m  = ms.current
+    const totalImages = imageUrls.length
+
+    const onStart = (e) => {
+      if (e.touches.length === 2) {
+        m.pinchDist  = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        )
+        m.pinchScale = m.scale
+        m.moving     = true
+        return
+      }
+      if (e.touches.length !== 1) return
+
+      const t = e.touches[0]
+      m.startX    = t.clientX
+      m.startY    = t.clientY
+      m.panStartX = m.panX
+      m.panStartY = m.panY
+      m.moving    = false
+      m.pinchDist = null
+
+      // 더블탭 → 줌 토글
+      const now = Date.now()
+      if (now - m.lastTap < 300) {
+        e.preventDefault()
+        if (m.scale > 1) { m.scale = 1; m.panX = 0; m.panY = 0 }
+        else              { m.scale = 2 }
+        applyTransform()
+        m.lastTap = 0
+      } else {
+        m.lastTap = now
+      }
+    }
+
+    const onMove = (e) => {
+      e.preventDefault()
+
+      // 핀치줌
+      if (e.touches.length === 2 && m.pinchDist != null) {
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        )
+        m.scale = Math.max(1, Math.min(4, m.pinchScale * dist / m.pinchDist))
+        if (m.scale <= 1) { m.scale = 1; m.panX = 0; m.panY = 0 }
+        applyTransform()
+        return
+      }
+
+      if (e.touches.length !== 1) return
+      const dx = e.touches[0].clientX - m.startX
+      const dy = e.touches[0].clientY - m.startY
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) m.moving = true
+
+      if (m.scale > 1) {
+        m.panX = m.panStartX + dx
+        m.panY = m.panStartY + dy
+        applyTransform()
+      }
+    }
+
+    const onEnd = (e) => {
+      if (e.touches.length > 0) return
+
+      if (m.pinchDist != null) {
+        m.pinchDist = null
+        m.moving    = false
+        return
+      }
+
+      if (m.moving && m.scale <= 1 && e.changedTouches.length > 0) {
+        const dx = e.changedTouches[0].clientX - m.startX
+        if (Math.abs(dx) > 50) {
+          setModalIndex(i => {
+            if (dx < 0 && i < totalImages - 1) return i + 1
+            if (dx > 0 && i > 0)               return i - 1
+            return i
+          })
+        }
+      }
+      m.moving = false
+    }
+
+    el.addEventListener('touchstart', onStart, { passive: false })
+    el.addEventListener('touchmove',  onMove,  { passive: false })
+    el.addEventListener('touchend',   onEnd)
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove',  onMove)
+      el.removeEventListener('touchend',   onEnd)
+    }
+  }, [modalIndex !== null])
+  // ────────────────────────────────────────────────────────────
+
   if (loading) return (
     <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>불러오는 중...</div>
   )
   if (!trade) return null
 
   const isProfit = trade.profit_rate > 0
-  const isLoss = trade.profit_rate < 0
-
-  // 순수익 표시 여부
+  const isLoss   = trade.profit_rate < 0
   const hasNetProfit = trade.net_profit_amount != null || trade.net_profit_rate != null
 
   return (
@@ -153,7 +308,6 @@ export default function TradeDetail() {
         borderRadius: '16px', padding: isMobile ? '16px' : '24px',
         marginBottom: '12px',
       }}>
-        {/* 종목명 + 등급/섹터/시장 */}
         <div style={{ marginBottom: '14px' }}>
           <div style={{ fontSize: isMobile ? '22px' : '26px', fontWeight: 700, color: '#1e293b', marginBottom: '6px' }}>
             {trade.stock_name}
@@ -183,7 +337,6 @@ export default function TradeDetail() {
           </div>
         </div>
 
-        {/* 수익률/수익금/보유기간 */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)',
@@ -214,7 +367,6 @@ export default function TradeDetail() {
           </div>
         </div>
 
-        {/* 수수료·세금·순수익 */}
         {hasNetProfit && (
           <div style={{
             display: 'flex', gap: '16px', flexWrap: 'wrap',
@@ -256,7 +408,7 @@ export default function TradeDetail() {
         )}
       </div>
 
-      {/* 본문 - 모바일 1열, PC 2열 */}
+      {/* 본문 — 모바일 1열 / PC 2열 */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
@@ -297,8 +449,8 @@ export default function TradeDetail() {
             </div>
             <TagList label="매수 전 감정" items={trade.emotion_before} color="#f59e0b" />
             <TagList label="매도 후 감정" items={trade.emotion_after} color="#8b5cf6" />
-            <TagList label="매수 실수" items={trade.mistake_buy} color="#dc2626" />
-            <TagList label="매도 실수" items={trade.mistake_sell} color="#ea580c" />
+            <TagList label="매수 실수"   items={trade.mistake_buy}    color="#dc2626" />
+            <TagList label="매도 실수"   items={trade.mistake_sell}   color="#ea580c" />
           </Section>
         </div>
 
@@ -307,9 +459,9 @@ export default function TradeDetail() {
           {(trade.material_context || trade.entry_reason || trade.stop_loss_plan || trade.trade_log) && (
             <Section title="매매 근거">
               <Field label="재료 및 시장상황" value={trade.material_context} />
-              <Field label="진입근거" value={trade.entry_reason} />
-              <Field label="손절선 설정" value={trade.stop_loss_plan} />
-              <Field label="대응 기록" value={trade.trade_log} />
+              <Field label="진입근거"         value={trade.entry_reason} />
+              <Field label="손절선 설정"      value={trade.stop_loss_plan} />
+              <Field label="대응 기록"        value={trade.trade_log} />
             </Section>
           )}
 
@@ -350,7 +502,7 @@ export default function TradeDetail() {
         </div>
       </div>
 
-      {/* 차트 이미지 */}
+      {/* 차트 이미지 그리드 */}
       {imageUrls.length > 0 && (
         <Section title={`차트 이미지 (${imageUrls.length}장)`}>
           <div style={{
@@ -359,7 +511,7 @@ export default function TradeDetail() {
             gap: '12px',
           }}>
             {imageUrls.map((url, i) => (
-              <div key={i} onClick={() => setSelectedImage(url)} style={{
+              <div key={i} onClick={() => setModalIndex(i)} style={{
                 borderRadius: '8px', overflow: 'hidden', cursor: 'pointer',
                 border: '1px solid #e2e8f0', aspectRatio: '16/9',
               }}>
@@ -372,25 +524,162 @@ export default function TradeDetail() {
         </Section>
       )}
 
-      {/* 이미지 확대 모달 */}
-      {selectedImage && (
-        <div onClick={() => setSelectedImage(null)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 1000, padding: '20px',
-        }}>
-          <img src={selectedImage} alt="차트 확대" style={{
-            maxWidth: '95vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '8px',
-          }} />
-          <button onClick={() => setSelectedImage(null)} style={{
-            position: 'fixed', top: '16px', right: '16px',
-            background: '#fff', border: 'none', borderRadius: '50%',
-            width: '40px', height: '40px', fontSize: '20px',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-          }}>✕</button>
+      {/* ── 개선된 이미지 모달 ────────────────────────────────── */}
+      {modalIndex !== null && (
+        <div
+          ref={modalRef}
+          style={{
+            position: 'fixed', inset: 0,
+            height: '100dvh',              // ✅ 수정 1: 브라우저 줌 시 높이 기준 명시
+            background: 'rgba(0,0,0,0.92)',
+            zIndex: 1000,
+            display: 'flex', flexDirection: 'column',
+            touchAction: 'none',
+          }}
+        >
+          {/* 헤더 — 항상 고정 */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 14px',
+            background: 'rgba(0,0,0,0.55)',
+            flexShrink: 0,
+          }}>
+            {/* X 버튼 — vmin 기반으로 브라우저 줌에 비례해서 작아짐 */}
+            <button
+              onClick={closeModal}
+              style={{
+                width:      'clamp(26px, 4vmin, 38px)',   // ✅ 수정 3
+                height:     'clamp(26px, 4vmin, 38px)',
+                fontSize:   'clamp(13px, 1.8vmin, 18px)',
+                background: 'rgba(255,255,255,0.18)',
+                border: 'none', borderRadius: '50%',
+                color: '#fff',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >✕</button>
+
+            {/* 현재 위치 표시 */}
+            {imageUrls.length > 1 ? (
+              <span style={{
+                color: '#fff', fontSize: '15px', fontWeight: 600,
+                background: 'rgba(0,0,0,0.35)',
+                padding: '4px 12px', borderRadius: '20px',
+              }}>
+                {modalIndex + 1} / {imageUrls.length}
+              </span>
+            ) : <div />}
+
+            {/* 오른쪽 여백 (X 버튼과 대칭) */}
+            <div style={{ width: 'clamp(26px, 4vmin, 38px)', flexShrink: 0 }} />
+          </div>
+
+          {/* 이미지 영역 */}
+          <div style={{
+            flex: 1,
+            minHeight: 0,                  // ✅ 수정 2: flex 자식 높이 압축 허용
+            position: 'relative',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            overflow: 'hidden',
+          }}>
+            {/* ◀ 이전 버튼 */}
+            {imageUrls.length > 1 && (
+              <button
+                onClick={goPrev}
+                style={{
+                  position: 'absolute', left: '8px', zIndex: 5,
+                  width:    'clamp(28px, 5vmin, 42px)',   // ✅ 수정 3
+                  height:   'clamp(28px, 5vmin, 42px)',
+                  fontSize: 'clamp(12px, 1.6vmin, 17px)',
+                  background: modalIndex > 0
+                    ? 'rgba(255,255,255,0.22)'
+                    : 'rgba(255,255,255,0.06)',
+                  border: 'none', borderRadius: '50%',
+                  color: modalIndex > 0 ? '#fff' : 'rgba(255,255,255,0.25)',
+                  cursor: modalIndex > 0 ? 'pointer' : 'default',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'background 0.15s',
+                }}
+              >◀</button>
+            )}
+
+            {/* 이미지 본체 */}
+            <img
+              ref={imgRef}
+              src={imageUrls[modalIndex]}
+              alt={`차트 ${modalIndex + 1}`}
+              draggable={false}
+              style={{
+                maxWidth: '88%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+                userSelect: 'none',
+                transformOrigin: 'center center',
+                display: 'block',
+                pointerEvents: 'none',
+              }}
+            />
+
+            {/* ▶ 다음 버튼 */}
+            {imageUrls.length > 1 && (
+              <button
+                onClick={goNext}
+                style={{
+                  position: 'absolute', right: '8px', zIndex: 5,
+                  width:    'clamp(28px, 5vmin, 42px)',   // ✅ 수정 3
+                  height:   'clamp(28px, 5vmin, 42px)',
+                  fontSize: 'clamp(12px, 1.6vmin, 17px)',
+                  background: modalIndex < imageUrls.length - 1
+                    ? 'rgba(255,255,255,0.22)'
+                    : 'rgba(255,255,255,0.06)',
+                  border: 'none', borderRadius: '50%',
+                  color: modalIndex < imageUrls.length - 1 ? '#fff' : 'rgba(255,255,255,0.25)',
+                  cursor: modalIndex < imageUrls.length - 1 ? 'pointer' : 'default',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'background 0.15s',
+                }}
+              >▶</button>
+            )}
+          </div>
+
+          {/* 점 인디케이터 */}
+          {imageUrls.length > 1 && (
+            <div style={{
+              display: 'flex', justifyContent: 'center', alignItems: 'center',
+              gap: '8px', padding: '14px 16px',
+              flexShrink: 0,
+            }}>
+              {imageUrls.map((_, i) => (
+                <div
+                  key={i}
+                  onClick={() => {
+                    ms.current.scale = 1
+                    ms.current.panX  = 0
+                    ms.current.panY  = 0
+                    setModalIndex(i)
+                  }}
+                  style={{
+                    width:      i === modalIndex                    // ✅ 수정 3
+                      ? 'clamp(14px, 2.5vmin, 22px)'
+                      : 'clamp(5px,  1vmin,   8px)',
+                    height:     'clamp(5px, 1vmin, 8px)',
+                    borderRadius: '4px',
+                    background: i === modalIndex
+                      ? '#fff'
+                      : 'rgba(255,255,255,0.32)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    flexShrink: 0,
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
+      {/* ──────────────────────────────────────────────────────── */}
+
     </div>
   )
 }
