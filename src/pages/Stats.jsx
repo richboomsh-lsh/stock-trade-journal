@@ -2,6 +2,16 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { getProfitColor, formatKRW } from '../lib/tradeHelpers'
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 640)
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 640)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return isMobile
+}
+
 function avg(arr) {
   if (!arr.length) return 0
   return arr.reduce((s, v) => s + v, 0) / arr.length
@@ -20,12 +30,15 @@ function Card({ label, value, sub, color }) {
   )
 }
 
-function Bar({ label, value, max, color, suffix = '%', count }) {
+function Bar({ label, value, max, color, suffix = '%', count, isMobile }) {
   const pct = max > 0 ? Math.abs(value) / max * 100 : 0
   const isNeg = value < 0
   return (
     <div style={{ marginBottom: '10px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        fontSize: isMobile ? '14px' : '13px', marginBottom: '4px',
+      }}>
         <span style={{ color: '#475569', fontWeight: 500 }}>{label}
           {count !== undefined && (
             <span style={{ color: '#94a3b8', fontWeight: 400, marginLeft: '6px' }}>({count}건)</span>
@@ -81,14 +94,14 @@ function MonthBar({ month, value, maxAbs }) {
   )
 }
 
-function Section({ title, children }) {
+function Section({ title, children, isMobile }) {
   return (
     <div style={{
       background: '#fff', border: '1px solid #e2e8f0',
       borderRadius: '12px', padding: '20px', marginBottom: '16px',
     }}>
       <h3 style={{
-        fontSize: '14px', fontWeight: 700, color: '#64748b',
+        fontSize: isMobile ? '16px' : '14px', fontWeight: 700, color: '#64748b',
         marginBottom: '18px', textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>{title}</h3>
       {children}
@@ -97,6 +110,7 @@ function Section({ title, children }) {
 }
 
 export default function Stats() {
+  const isMobile = useIsMobile()
   const [trades, setTrades] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -111,7 +125,6 @@ export default function Stats() {
     <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>불러오는 중...</div>
   )
 
-  // ✅ 완료된 거래 — net_profit_rate 우선, 없으면 profit_rate fallback
   const done = trades.filter(t => t.sell_price != null && (t.net_profit_rate != null || t.profit_rate != null))
 
   const getRate = t => t.net_profit_rate ?? t.profit_rate ?? 0
@@ -124,11 +137,11 @@ export default function Stats() {
     }}>
       <div style={{ fontSize: '48px', marginBottom: '12px' }}>📊</div>
       <p style={{ fontSize: '16px' }}>완료된 매매 기록이 없습니다.</p>
-      <p style={{ fontSize: '13px', marginTop: '6px' }}>매도가를 입력한 거래가 생기면 통계가 표시됩니다.</p>
+      <p style={{ fontSize: isMobile ? '14px' : '13px', marginTop: '6px' }}>매도가를 입력한 거래가 생기면 통계가 표시됩니다.</p>
     </div>
   )
 
-  // ── 기본 통계 (순수익 기준) ─────────────────────────
+  // 기본 통계
   const wins = done.filter(t => getRate(t) > 0)
   const losses = done.filter(t => getRate(t) < 0)
   const winRate = (wins.length / done.length * 100).toFixed(1)
@@ -140,7 +153,7 @@ export default function Stats() {
   const rr = (losses.length && wins.length)
     ? (Number(avgWin) / Math.abs(Number(avgLoss))).toFixed(2) : '-'
 
-  // ── 섹터별 (순수익 기준) ────────────────────────────
+  // 섹터별
   const sectorMap = {}
   done.forEach(t => {
     if (!t.sector) return
@@ -152,7 +165,7 @@ export default function Stats() {
     .sort((a, b) => b.avgRate - a.avgRate)
   const maxSector = Math.max(...sectorStats.map(s => Math.abs(s.avgRate)), 0.01)
 
-  // ── 매매방식별 (순수익 기준) ────────────────────────
+  // 매매방식별
   const styleMap = {}
   done.forEach(t => {
     if (!t.trade_style) return
@@ -168,7 +181,7 @@ export default function Stats() {
     .sort((a, b) => b.winRate - a.winRate)
   const maxStyle = Math.max(...styleStats.map(s => s.winRate), 0.01)
 
-  // ✅ 시장별 통계 (코스피/코스닥) ─────────────────────
+  // 시장별
   const marketMap = {}
   done.forEach(t => {
     if (!t.market) return
@@ -185,7 +198,7 @@ export default function Stats() {
     .sort((a, b) => b.avgRate - a.avgRate)
   const maxMarketRate = Math.max(...marketStats.map(s => Math.abs(s.avgRate)), 0.01)
 
-  // ── 월별 손익 (순수익 기준) ─────────────────────────
+  // 월별
   const monthMap = {}
   done.forEach(t => {
     if (!t.sell_date) return
@@ -196,7 +209,7 @@ export default function Stats() {
   const recentMonths = Object.keys(monthMap).sort().slice(-12)
   const maxMonthAbs = Math.max(...recentMonths.map(k => Math.abs(monthMap[k])), 1)
 
-  // ✅ 감정상태 — emotion_before / emotion_after 분리 ──
+  // 감정 통계
   const buildEmotionStats = (field) => {
     const map = {}
     done.forEach(t => {
@@ -211,11 +224,10 @@ export default function Stats() {
       .map(([e, rates]) => ({ name: e, avgRate: avg(rates), count: rates.length }))
       .sort((a, b) => b.avgRate - a.avgRate)
   }
-  // 구버전 emotion_state도 fallback으로 지원
   const buildEmotionStatsFallback = () => {
     const map = {}
     done.forEach(t => {
-      if (t.emotion_before?.length || t.emotion_after?.length) return // 신버전은 위에서 처리
+      if (t.emotion_before?.length || t.emotion_after?.length) return
       if (!t.emotion_state) return
       if (!map[t.emotion_state]) map[t.emotion_state] = []
       map[t.emotion_state].push(getRate(t))
@@ -230,7 +242,7 @@ export default function Stats() {
   const allEmotionStats = [...emotionBeforeStats, ...emotionAfterStats, ...emotionFallbackStats]
   const maxEmotion = Math.max(...allEmotionStats.map(e => Math.abs(e.avgRate)), 0.01)
 
-  // ── 매매등급별 (순수익 기준) ────────────────────────
+  // 매매등급별
   const gradeMap = {}
   done.forEach(t => {
     if (!t.trade_grade) return
@@ -241,18 +253,14 @@ export default function Stats() {
   const gradeColors2 = { A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#dc2626' }
   const gradeStats = gradeOrder
     .filter(g => gradeMap[g])
-    .map(g => ({
-      name: g,
-      avgRate: avg(gradeMap[g]),
-      count: gradeMap[g].length,
-    }))
+    .map(g => ({ name: g, avgRate: avg(gradeMap[g]), count: gradeMap[g].length }))
   const maxGrade = Math.max(...gradeStats.map(g => Math.abs(g.avgRate)), 0.01)
 
-  // ── 최고/최악 거래 (순수익 기준) ───────────────────
+  // 최고/최악 거래
   const bestTrade = [...done].sort((a, b) => getRate(b) - getRate(a))[0]
   const worstTrade = [...done].sort((a, b) => getRate(a) - getRate(b))[0]
 
-  // ✅ 실수유형 — mistake_buy / mistake_sell 분리 ──────
+  // 실수유형
   const buildMistakeStats = (field) => {
     const map = {}
     done.forEach(t => {
@@ -262,7 +270,6 @@ export default function Stats() {
     })
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5)
   }
-  // 구버전 mistake_types fallback
   const mistakeFallback = (() => {
     const map = {}
     done.forEach(t => {
@@ -278,41 +285,26 @@ export default function Stats() {
   const maxMistakeSell = mistakeSellStats[0]?.[1] || 1
   const maxMistakeFallback = mistakeFallback[0]?.[1] || 1
 
-  // ────────────────────────────────────────────────────
   return (
     <div>
       <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#1e293b', marginBottom: '20px' }}>
         📊 통계 대시보드
       </h2>
 
-      {/* ① 핵심 요약 카드 (순수익 기준) */}
+      {/* ① 핵심 요약 카드 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '16px' }}>
         <Card label="총 완료 거래" value={`${done.length}건`} sub={`전체 ${trades.length}건`} />
-        <Card
-          label="승률"
-          value={`${winRate}%`}
-          sub={`${wins.length}승 ${losses.length}패`}
-          color={Number(winRate) >= 50 ? '#2563eb' : '#dc2626'}
-        />
+        <Card label="승률" value={`${winRate}%`} sub={`${wins.length}승 ${losses.length}패`} color={Number(winRate) >= 50 ? '#2563eb' : '#dc2626'} />
         <Card label="평균 순수익률 (익)" value={`+${avgWin}%`} color="#2563eb" />
         <Card label="평균 순수익률 (손)" value={`${avgLoss}%`} color="#dc2626" />
-        <Card
-          label="손익비"
-          value={rr === '-' ? '-' : `${rr}`}
-          sub="평균수익 ÷ 평균손실"
-          color={rr !== '-' && Number(rr) >= 1 ? '#16a34a' : '#dc2626'}
-        />
-        <Card
-          label="누적 순손익"
-          value={`${totalProfit >= 0 ? '+' : ''}${Math.round(totalProfit / 10000)}만원`}
-          color={getProfitColor(totalProfit)}
-        />
+        <Card label="손익비" value={rr === '-' ? '-' : `${rr}`} sub="평균수익 ÷ 평균손실" color={rr !== '-' && Number(rr) >= 1 ? '#16a34a' : '#dc2626'} />
+        <Card label="누적 순손익" value={`${totalProfit >= 0 ? '+' : ''}${Math.round(totalProfit / 10000)}만원`} color={getProfitColor(totalProfit)} />
         <Card label="평균 보유기간" value={avgHolding === '-' ? '-' : `${avgHolding}일`} />
       </div>
 
       {/* ② 월별 손익 추이 */}
       {recentMonths.length > 0 && (
-        <Section title="월별 순손익 추이">
+        <Section title="월별 순손익 추이" isMobile={isMobile}>
           <div style={{ display: 'flex', alignItems: 'stretch', gap: '4px', overflowX: 'auto', paddingBottom: '8px' }}>
             {recentMonths.map(key => (
               <MonthBar key={key} month={key.slice(5)} value={monthMap[key]} maxAbs={maxMonthAbs} />
@@ -328,59 +320,44 @@ export default function Stats() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
 
-        {/* ③ 섹터별 평균 순수익률 */}
+        {/* ③ 섹터별 */}
         {sectorStats.length > 0 && (
-          <Section title="섹터별 평균 순수익률">
+          <Section title="섹터별 평균 순수익률" isMobile={isMobile}>
             {sectorStats.map(s => (
-              <Bar key={s.name} label={s.name} value={s.avgRate} max={maxSector} count={s.count} color="#7c3aed" />
+              <Bar key={s.name} label={s.name} value={s.avgRate} max={maxSector} count={s.count} color="#7c3aed" isMobile={isMobile} />
             ))}
           </Section>
         )}
 
-        {/* ④ 매매방식별 승률 */}
+        {/* ④ 매매방식별 */}
         {styleStats.length > 0 && (
-          <Section title="매매방식별 승률">
+          <Section title="매매방식별 승률" isMobile={isMobile}>
             {styleStats.map(s => (
-              <Bar key={s.name} label={s.name} value={s.winRate} max={maxStyle} count={s.count} suffix="%" color="#0891b2" />
+              <Bar key={s.name} label={s.name} value={s.winRate} max={maxStyle} count={s.count} suffix="%" color="#0891b2" isMobile={isMobile} />
             ))}
           </Section>
         )}
 
-        {/* ✅ ⑤ 시장별 통계 */}
+        {/* ⑤ 시장별 */}
         {marketStats.length > 0 && (
-          <Section title="시장별 평균 순수익률">
+          <Section title="시장별 평균 순수익률" isMobile={isMobile}>
             {marketStats.map(m => (
-              <Bar
-                key={m.name}
-                label={m.name}
-                value={m.avgRate}
-                max={maxMarketRate}
-                count={m.count}
-                color={m.name === '코스피' ? '#16a34a' : '#7c3aed'}
-              />
+              <Bar key={m.name} label={m.name} value={m.avgRate} max={maxMarketRate} count={m.count} color={m.name === '코스피' ? '#16a34a' : '#7c3aed'} isMobile={isMobile} />
             ))}
             <div style={{ marginTop: '14px', borderTop: '1px solid #f1f5f9', paddingTop: '14px' }}>
-              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px', fontWeight: 600 }}>승률</div>
+              <div style={{ fontSize: isMobile ? '14px' : '12px', color: '#94a3b8', marginBottom: '8px', fontWeight: 600 }}>승률</div>
               {marketStats.map(m => (
-                <Bar
-                  key={m.name + '_wr'}
-                  label={m.name}
-                  value={m.winRate}
-                  max={100}
-                  count={m.count}
-                  suffix="%"
-                  color={m.name === '코스피' ? '#16a34a' : '#7c3aed'}
-                />
+                <Bar key={m.name + '_wr'} label={m.name} value={m.winRate} max={100} count={m.count} suffix="%" color={m.name === '코스피' ? '#16a34a' : '#7c3aed'} isMobile={isMobile} />
               ))}
             </div>
           </Section>
         )}
 
-        {/* ✅ ⑥ 감정상태별 — 매수 전 */}
+        {/* ⑥ 매수 전 감정 */}
         {emotionBeforeStats.length > 0 && (
-          <Section title="매수 전 감정별 평균 순수익률">
+          <Section title="매수 전 감정별 평균 순수익률" isMobile={isMobile}>
             {emotionBeforeStats.map(e => (
-              <Bar key={e.name} label={e.name} value={e.avgRate} max={maxEmotion} count={e.count} color="#d97706" />
+              <Bar key={e.name} label={e.name} value={e.avgRate} max={maxEmotion} count={e.count} color="#d97706" isMobile={isMobile} />
             ))}
             <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '12px', lineHeight: '1.6' }}>
               💡 매수 전 어떤 심리 상태일 때 좋은 결과가 나오는지 파악해 보세요.
@@ -388,11 +365,11 @@ export default function Stats() {
           </Section>
         )}
 
-        {/* ✅ ⑦ 감정상태별 — 매수 후 */}
+        {/* ⑦ 매도 후 감정 */}
         {emotionAfterStats.length > 0 && (
-          <Section title="매수 후 감정별 평균 순수익률">
+          <Section title="매수 후 감정별 평균 순수익률" isMobile={isMobile}>
             {emotionAfterStats.map(e => (
-              <Bar key={e.name} label={e.name} value={e.avgRate} max={maxEmotion} count={e.count} color="#0891b2" />
+              <Bar key={e.name} label={e.name} value={e.avgRate} max={maxEmotion} count={e.count} color="#0891b2" isMobile={isMobile} />
             ))}
             <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '12px', lineHeight: '1.6' }}>
               💡 매수 후 감정이 매도 결정에 미치는 영향을 분석해 보세요.
@@ -400,11 +377,11 @@ export default function Stats() {
           </Section>
         )}
 
-        {/* 구버전 감정상태 fallback */}
+        {/* 구버전 감정 fallback */}
         {emotionFallbackStats.length > 0 && (
-          <Section title="감정상태별 평균 순수익률">
+          <Section title="감정상태별 평균 순수익률" isMobile={isMobile}>
             {emotionFallbackStats.map(e => (
-              <Bar key={e.name} label={e.name} value={e.avgRate} max={maxEmotion} count={e.count} color="#d97706" />
+              <Bar key={e.name} label={e.name} value={e.avgRate} max={maxEmotion} count={e.count} color="#d97706" isMobile={isMobile} />
             ))}
             <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '12px', lineHeight: '1.6' }}>
               💡 수익률이 높은 감정 상태를 파악해 최적의 심리 조건을 만들어 보세요.
@@ -412,11 +389,11 @@ export default function Stats() {
           </Section>
         )}
 
-        {/* ⑧ 매매등급별 평균 순수익률 */}
+        {/* ⑧ 매매등급별 */}
         {gradeStats.length > 0 && (
-          <Section title="매매등급별 평균 순수익률">
+          <Section title="매매등급별 평균 순수익률" isMobile={isMobile}>
             {gradeStats.map(g => (
-              <Bar key={g.name} label={`등급 ${g.name}`} value={g.avgRate} max={maxGrade} count={g.count} color={gradeColors2[g.name]} />
+              <Bar key={g.name} label={`등급 ${g.name}`} value={g.avgRate} max={maxGrade} count={g.count} color={gradeColors2[g.name]} isMobile={isMobile} />
             ))}
             <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '12px', lineHeight: '1.6' }}>
               💡 등급은 계획 대비 실행 품질을 평가합니다. A등급 거래의 수익률이 낮다면 진입 기준을 점검해 보세요.
@@ -425,35 +402,29 @@ export default function Stats() {
         )}
       </div>
 
-      {/* ⑨ 최고/최악 거래 (순수익 기준) */}
-      <Section title="최고 / 최악 거래">
+      {/* ⑨ 최고/최악 거래 */}
+      <Section title="최고 / 최악 거래" isMobile={isMobile}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-          <div style={{
-            background: '#eff6ff', border: '1px solid #bfdbfe',
-            borderRadius: '10px', padding: '16px',
-          }}>
+          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '16px' }}>
             <div style={{ fontSize: '12px', color: '#2563eb', fontWeight: 600, marginBottom: '8px' }}>🏆 최고 수익 거래</div>
             <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b' }}>{bestTrade.stock_name}</div>
             <div style={{ fontSize: '24px', fontWeight: 700, color: '#2563eb', marginTop: '4px' }}>
               +{getRate(bestTrade).toFixed(2)}%
             </div>
-            <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+            <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#64748b', marginTop: '4px' }}>
               +{formatKRW(getAmount(bestTrade))}원 · {bestTrade.sell_date}
             </div>
             {bestTrade.net_profit_rate != null && (
               <div style={{ fontSize: '11px', color: '#93c5fd', marginTop: '2px' }}>순수익 기준</div>
             )}
           </div>
-          <div style={{
-            background: '#fef2f2', border: '1px solid #fecaca',
-            borderRadius: '10px', padding: '16px',
-          }}>
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '16px' }}>
             <div style={{ fontSize: '12px', color: '#dc2626', fontWeight: 600, marginBottom: '8px' }}>💀 최대 손실 거래</div>
             <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b' }}>{worstTrade.stock_name}</div>
             <div style={{ fontSize: '24px', fontWeight: 700, color: '#dc2626', marginTop: '4px' }}>
               {getRate(worstTrade).toFixed(2)}%
             </div>
-            <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+            <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#64748b', marginTop: '4px' }}>
               {formatKRW(getAmount(worstTrade))}원 · {worstTrade.sell_date}
             </div>
             {worstTrade.net_profit_rate != null && (
@@ -463,11 +434,11 @@ export default function Stats() {
         </div>
       </Section>
 
-      {/* ✅ ⑩ 실수유형 — 매수 실수 */}
+      {/* ⑩ 매수 실수 */}
       {mistakeBuyStats.length > 0 && (
-        <Section title="반복 실수 유형 — 매수">
+        <Section title="반복 실수 유형 — 매수" isMobile={isMobile}>
           {mistakeBuyStats.map(([name, count]) => (
-            <Bar key={name} label={name} value={count} max={maxMistakeBuy} suffix="회" color="#f59e0b" />
+            <Bar key={name} label={name} value={count} max={maxMistakeBuy} suffix="회" color="#f59e0b" isMobile={isMobile} />
           ))}
           <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '12px', lineHeight: '1.6' }}>
             💡 매수 단계의 반복 실수를 줄이면 진입 품질이 올라갑니다.
@@ -475,11 +446,11 @@ export default function Stats() {
         </Section>
       )}
 
-      {/* ✅ ⑪ 실수유형 — 매도 실수 */}
+      {/* ⑪ 매도 실수 */}
       {mistakeSellStats.length > 0 && (
-        <Section title="반복 실수 유형 — 매도">
+        <Section title="반복 실수 유형 — 매도" isMobile={isMobile}>
           {mistakeSellStats.map(([name, count]) => (
-            <Bar key={name} label={name} value={count} max={maxMistakeSell} suffix="회" color="#dc2626" />
+            <Bar key={name} label={name} value={count} max={maxMistakeSell} suffix="회" color="#dc2626" isMobile={isMobile} />
           ))}
           <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '12px', lineHeight: '1.6' }}>
             💡 매도 단계의 반복 실수를 개선하면 수익 실현율이 높아집니다.
@@ -487,11 +458,11 @@ export default function Stats() {
         </Section>
       )}
 
-      {/* 구버전 실수유형 fallback */}
+      {/* 구버전 실수 fallback */}
       {mistakeFallback.length > 0 && (
-        <Section title="반복 실수 유형">
+        <Section title="반복 실수 유형" isMobile={isMobile}>
           {mistakeFallback.map(([name, count]) => (
-            <Bar key={name} label={name} value={count} max={maxMistakeFallback} suffix="회" color="#dc2626" />
+            <Bar key={name} label={name} value={count} max={maxMistakeFallback} suffix="회" color="#dc2626" isMobile={isMobile} />
           ))}
           <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '12px', lineHeight: '1.6' }}>
             💡 가장 자주 반복되는 실수를 집중적으로 개선하면 수익률이 빠르게 올라갑니다.

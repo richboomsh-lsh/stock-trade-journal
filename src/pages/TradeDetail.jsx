@@ -13,28 +13,28 @@ function useIsMobile() {
   return isMobile
 }
 
-function Field({ label, value, color }) {
+function Field({ label, value, color, isMobile }) {
   if (value === null || value === undefined || value === '') return null
   return (
     <div style={{ marginBottom: '12px' }}>
-      <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '3px' }}>{label}</div>
-      <div style={{ fontSize: '14px', color: color || '#1e293b', lineHeight: '1.6' }}>{value}</div>
+      <div style={{ fontSize: isMobile ? '14px' : '14px', color: '#94a3b8', marginBottom: '3px' }}>{label}</div>
+      <div style={{ fontSize: isMobile ? '16px' : '14px', color: color || '#1e293b', lineHeight: '1.6' }}>{value}</div>
     </div>
   )
 }
 
-function TagList({ label, items, color }) {
+function TagList({ label, items, color, isMobile }) {
   if (!items || items.length === 0) return null
   return (
     <div style={{ marginBottom: '12px' }}>
-      <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '6px' }}>{label}</div>
+      <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#94a3b8', marginBottom: '6px' }}>{label}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
         {items.map((item, i) => (
           <span key={i} style={{
             padding: '2px 10px',
             background: color ? color + '15' : '#f1f5f9',
             color: color || '#475569',
-            borderRadius: '20px', fontSize: '14px',
+            borderRadius: '20px', fontSize: isMobile ? '16px' : '14px',
             border: `1px solid ${color ? color + '40' : '#e2e8f0'}`,
           }}>{item}</span>
         ))}
@@ -43,14 +43,14 @@ function TagList({ label, items, color }) {
   )
 }
 
-function Section({ title, children }) {
+function Section({ title, children, isMobile }) {
   return (
     <div style={{
       background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px',
       padding: '16px', marginBottom: '12px',
     }}>
       <h3 style={{
-        fontSize: '14px', fontWeight: 700, color: '#64748b', marginBottom: '14px',
+        fontSize: isMobile ? '16px' : '14px', fontWeight: 700, color: '#64748b', marginBottom: '14px',
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>{title}</h3>
       {children}
@@ -66,7 +66,6 @@ export default function TradeDetail() {
   const [loading, setLoading] = useState(true)
   const [imageUrls, setImageUrls] = useState([])
 
-  // ── 모달 state ──────────────────────────────────────────────
   const [modalIndex, setModalIndex] = useState(null)
   const modalRef = useRef(null)
   const imgRef   = useRef(null)
@@ -80,7 +79,6 @@ export default function TradeDetail() {
     lastTap: 0,
     moving: false,
   })
-  // ────────────────────────────────────────────────────────────
 
   useEffect(() => { fetchTrade() }, [id])
 
@@ -113,7 +111,6 @@ export default function TradeDetail() {
     navigate('/journal')
   }
 
-  // ── 모달 헬퍼 ────────────────────────────────────────────────
   const applyTransform = () => {
     if (!imgRef.current) return
     const { scale: s, panX, panY } = ms.current
@@ -126,7 +123,6 @@ export default function TradeDetail() {
   const goPrev = () => setModalIndex(i => (i > 0 ? i - 1 : i))
   const goNext = () => setModalIndex(i => (i < imageUrls.length - 1 ? i + 1 : i))
 
-  // 이미지 바뀔 때마다 줌·이동 초기화
   useEffect(() => {
     if (modalIndex === null) return
     ms.current.scale = 1
@@ -135,7 +131,6 @@ export default function TradeDetail() {
     requestAnimationFrame(applyTransform)
   }, [modalIndex])
 
-  // 모달 열릴 때 배경 스크롤 잠금
   useEffect(() => {
     if (modalIndex !== null) {
       document.body.style.overflow = 'hidden'
@@ -143,7 +138,6 @@ export default function TradeDetail() {
     }
   }, [modalIndex !== null])
 
-  // ── 키보드 네비게이션 ────────────────────────────────────────
   useEffect(() => {
     if (modalIndex === null) return
     const handler = (e) => {
@@ -155,7 +149,6 @@ export default function TradeDetail() {
     return () => window.removeEventListener('keydown', handler)
   }, [modalIndex !== null, imageUrls.length])
 
-  // ── 터치 이벤트 (passive:false 필수) ────────────────────────
   useEffect(() => {
     if (modalIndex === null || !modalRef.current) return
     const el = modalRef.current
@@ -182,7 +175,6 @@ export default function TradeDetail() {
       m.moving    = false
       m.pinchDist = null
 
-      // 더블탭 → 줌 토글
       const now = Date.now()
       if (now - m.lastTap < 300) {
         e.preventDefault()
@@ -198,7 +190,6 @@ export default function TradeDetail() {
     const onMove = (e) => {
       e.preventDefault()
 
-      // 핀치줌
       if (e.touches.length === 2 && m.pinchDist != null) {
         const dist = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
@@ -253,7 +244,6 @@ export default function TradeDetail() {
       el.removeEventListener('touchend',   onEnd)
     }
   }, [modalIndex !== null])
-  // ────────────────────────────────────────────────────────────
 
   if (loading) return (
     <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>불러오는 중...</div>
@@ -274,11 +264,12 @@ export default function TradeDetail() {
       }}>
         <button onClick={() => navigate(-1)} style={{
           padding: '6px 12px', background: '#fff', border: '1px solid #e2e8f0',
-          borderRadius: '8px', cursor: 'pointer', fontSize: '14px', color: '#475569',
+          borderRadius: '8px', cursor: 'pointer',
+          fontSize: isMobile ? '16px' : '14px', color: '#475569',
           whiteSpace: 'nowrap',
         }}>← 뒤로</button>
         <h2 style={{
-          fontSize: isMobile ? '17px' : '20px',
+          fontSize: isMobile ? '18px' : '20px',
           fontWeight: 700, color: '#1e293b', flex: 1,
           margin: 0, minWidth: 0,
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -288,13 +279,13 @@ export default function TradeDetail() {
         <Link to={`/edit/${trade.id}`} style={{
           padding: '7px 14px', background: '#2563eb', color: '#fff',
           textDecoration: 'none', borderRadius: '8px',
-          fontSize: isMobile ? '14px' : '15px',
+          fontSize: isMobile ? '16px' : '15px',
           fontWeight: 600, whiteSpace: 'nowrap',
         }}>✏️ 수정</Link>
         <button onClick={deleteTrade} style={{
           padding: '7px 14px', background: '#fee2e2', color: '#dc2626',
           border: '1px solid #fca5a5', borderRadius: '8px',
-          fontSize: isMobile ? '14px' : '15px',
+          fontSize: isMobile ? '16px' : '15px',
           cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
         }}>🗑️ 삭제</button>
       </div>
@@ -319,19 +310,21 @@ export default function TradeDetail() {
                 background: gradeColors[trade.trade_grade] + '20',
                 color: gradeColors[trade.trade_grade],
                 border: `1px solid ${gradeColors[trade.trade_grade]}40`,
-                borderRadius: '6px', fontSize: '14px', fontWeight: 700,
+                borderRadius: '6px', fontSize: isMobile ? '16px' : '14px', fontWeight: 700,
               }}>등급 {trade.trade_grade}</span>
             )}
             {trade.market && (
               <span style={{
                 padding: '2px 10px', background: '#1e293b',
-                color: '#fff', borderRadius: '6px', fontSize: '13px', fontWeight: 600,
+                color: '#fff', borderRadius: '6px',
+                fontSize: isMobile ? '14px' : '13px', fontWeight: 600,
               }}>{trade.market}</span>
             )}
             {trade.sector && (
               <span style={{
                 padding: '2px 10px', background: '#f1f5f9',
-                color: '#64748b', borderRadius: '6px', fontSize: '14px',
+                color: '#64748b', borderRadius: '6px',
+                fontSize: isMobile ? '16px' : '14px',
               }}>{trade.sector}</span>
             )}
           </div>
@@ -345,7 +338,7 @@ export default function TradeDetail() {
         }}>
           {trade.profit_rate != null && (
             <div>
-              <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '4px' }}>수익률</div>
+              <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#94a3b8', marginBottom: '4px' }}>수익률</div>
               <div style={{ fontSize: isMobile ? '22px' : '26px', fontWeight: 700, color: getProfitColor(trade.profit_rate) }}>
                 {isProfit ? '+' : ''}{trade.profit_rate.toFixed(2)}%
               </div>
@@ -353,14 +346,14 @@ export default function TradeDetail() {
           )}
           {trade.profit_amount != null && (
             <div>
-              <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '4px' }}>수익금</div>
+              <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#94a3b8', marginBottom: '4px' }}>수익금</div>
               <div style={{ fontSize: isMobile ? '18px' : '20px', fontWeight: 700, color: getProfitColor(trade.profit_rate) }}>
                 {trade.profit_amount >= 0 ? '+' : ''}{formatKRW(trade.profit_amount)}원
               </div>
             </div>
           )}
           <div>
-            <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '4px' }}>보유기간</div>
+            <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#94a3b8', marginBottom: '4px' }}>보유기간</div>
             <div style={{ fontSize: isMobile ? '18px' : '20px', fontWeight: 700, color: '#1e293b' }}>
               {trade.holding_days != null ? `${trade.holding_days}일` : '-'}
             </div>
@@ -374,32 +367,32 @@ export default function TradeDetail() {
           }}>
             {trade.fee != null && (
               <div>
-                <div style={{ fontSize: '13px', color: '#94a3b8' }}>수수료</div>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#dc2626' }}>
+                <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>수수료</div>
+                <div style={{ fontSize: isMobile ? '16px' : '14px', fontWeight: 600, color: '#dc2626' }}>
                   -{formatKRW(trade.fee)}원
                 </div>
               </div>
             )}
             {trade.tax != null && trade.tax > 0 && (
               <div>
-                <div style={{ fontSize: '13px', color: '#94a3b8' }}>세금</div>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#dc2626' }}>
+                <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>세금</div>
+                <div style={{ fontSize: isMobile ? '16px' : '14px', fontWeight: 600, color: '#dc2626' }}>
                   -{formatKRW(trade.tax)}원
                 </div>
               </div>
             )}
             {trade.net_profit_amount != null && (
               <div>
-                <div style={{ fontSize: '13px', color: '#94a3b8' }}>순수익금</div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: getProfitColor(trade.net_profit_amount) }}>
+                <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>순수익금</div>
+                <div style={{ fontSize: isMobile ? '16px' : '14px', fontWeight: 700, color: getProfitColor(trade.net_profit_amount) }}>
                   {trade.net_profit_amount >= 0 ? '+' : ''}{formatKRW(trade.net_profit_amount)}원
                 </div>
               </div>
             )}
             {trade.net_profit_rate != null && (
               <div>
-                <div style={{ fontSize: '13px', color: '#94a3b8' }}>순수익률</div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: getProfitColor(trade.net_profit_rate) }}>
+                <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>순수익률</div>
+                <div style={{ fontSize: isMobile ? '16px' : '14px', fontWeight: 700, color: getProfitColor(trade.net_profit_rate) }}>
                   {trade.net_profit_rate >= 0 ? '+' : ''}{Number(trade.net_profit_rate).toFixed(2)}%
                 </div>
               </div>
@@ -416,83 +409,84 @@ export default function TradeDetail() {
       }}>
         {/* 왼쪽 */}
         <div>
-          <Section title="거래 정보">
+          <Section title="거래 정보" isMobile={isMobile}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <Field label="매수일" value={trade.buy_date} />
-                <Field label="매수가" value={trade.buy_price ? `${formatKRW(trade.buy_price)}원` : null} />
+                <Field label="매수일" value={trade.buy_date} isMobile={isMobile} />
+                <Field label="매수가" value={trade.buy_price ? `${formatKRW(trade.buy_price)}원` : null} isMobile={isMobile} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <Field label="매도일" value={trade.sell_date} />
-                <Field label="매도가" value={trade.sell_price ? `${formatKRW(trade.sell_price)}원` : null} />
+                <Field label="매도일" value={trade.sell_date} isMobile={isMobile} />
+                <Field label="매도가" value={trade.sell_price ? `${formatKRW(trade.sell_price)}원` : null} isMobile={isMobile} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <Field label="수량" value={trade.quantity ? `${trade.quantity.toLocaleString()}주` : null} />
-                <Field label="포지션 비중" value={trade.position_size ? `${trade.position_size}%` : null} />
+                <Field label="수량" value={trade.quantity ? `${trade.quantity.toLocaleString()}주` : null} isMobile={isMobile} />
+                <Field label="포지션 비중" value={trade.position_size ? `${trade.position_size}%` : null} isMobile={isMobile} />
               </div>
             </div>
           </Section>
 
-          <Section title="분류">
+          <Section title="분류" isMobile={isMobile}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <Field label="섹터" value={trade.sector} />
-              <Field label="매매방식" value={trade.trade_style} />
-              <Field label="시장상황" value={trade.market_condition} />
+              <Field label="섹터" value={trade.sector} isMobile={isMobile} />
+              <Field label="매매방식" value={trade.trade_style} isMobile={isMobile} />
+              <Field label="시장상황" value={trade.market_condition} isMobile={isMobile} />
             </div>
-            <TagList label="테마" items={trade.themes} color="#7c3aed" />
+            <TagList label="테마" items={trade.themes} color="#7c3aed" isMobile={isMobile} />
           </Section>
 
-          <Section title="정성 평가">
+          <Section title="정성 평가" isMobile={isMobile}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-              <Field label="매매등급" value={trade.trade_grade} color={gradeColors[trade.trade_grade]} />
-              <Field label="매도이유" value={trade.sell_reason} />
+              <Field label="매매등급" value={trade.trade_grade} color={gradeColors[trade.trade_grade]} isMobile={isMobile} />
+              <Field label="매도이유" value={trade.sell_reason} isMobile={isMobile} />
             </div>
-            <TagList label="매수 전 감정" items={trade.emotion_before} color="#f59e0b" />
-            <TagList label="매도 후 감정" items={trade.emotion_after} color="#8b5cf6" />
-            <TagList label="매수 실수"   items={trade.mistake_buy}    color="#dc2626" />
-            <TagList label="매도 실수"   items={trade.mistake_sell}   color="#ea580c" />
+            <TagList label="매수 전 감정" items={trade.emotion_before} color="#f59e0b" isMobile={isMobile} />
+            <TagList label="매도 후 감정" items={trade.emotion_after} color="#8b5cf6" isMobile={isMobile} />
+            <TagList label="매수 실수"   items={trade.mistake_buy}    color="#dc2626" isMobile={isMobile} />
+            <TagList label="매도 실수"   items={trade.mistake_sell}   color="#ea580c" isMobile={isMobile} />
           </Section>
         </div>
 
         {/* 오른쪽 */}
         <div>
           {(trade.material_context || trade.entry_reason || trade.stop_loss_plan || trade.trade_log) && (
-            <Section title="매매 근거">
-              <Field label="재료 및 시장상황" value={trade.material_context} />
-              <Field label="진입근거"         value={trade.entry_reason} />
-              <Field label="손절선 설정"      value={trade.stop_loss_plan} />
-              <Field label="대응 기록"        value={trade.trade_log} />
+            <Section title="매매 근거" isMobile={isMobile}>
+              <Field label="재료 및 시장상황" value={trade.material_context} isMobile={isMobile} />
+              <Field label="진입근거"         value={trade.entry_reason} isMobile={isMobile} />
+              <Field label="손절선 설정"      value={trade.stop_loss_plan} isMobile={isMobile} />
+              <Field label="대응 기록"        value={trade.trade_log} isMobile={isMobile} />
             </Section>
           )}
 
           {(trade.reflection_good || trade.reflection_bad || trade.reflection_next) && (
-            <Section title="성찰">
+            <Section title="성찰" isMobile={isMobile}>
               {trade.reflection_good && (
                 <div style={{ marginBottom: '14px' }}>
-                  <div style={{ fontSize: '14px', color: '#16a34a', marginBottom: '4px', fontWeight: 600 }}>✅ 잘한 점</div>
-                  <div style={{ fontSize: '14px', color: '#1e293b', lineHeight: '1.6' }}>{trade.reflection_good}</div>
+                  <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#16a34a', marginBottom: '4px', fontWeight: 600 }}>✅ 잘한 점</div>
+                  <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#1e293b', lineHeight: '1.6' }}>{trade.reflection_good}</div>
                 </div>
               )}
               {trade.reflection_bad && (
                 <div style={{ marginBottom: '14px' }}>
-                  <div style={{ fontSize: '14px', color: '#dc2626', marginBottom: '4px', fontWeight: 600 }}>❌ 아쉬운 점</div>
-                  <div style={{ fontSize: '14px', color: '#1e293b', lineHeight: '1.6' }}>{trade.reflection_bad}</div>
+                  <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#dc2626', marginBottom: '4px', fontWeight: 600 }}>❌ 아쉬운 점</div>
+                  <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#1e293b', lineHeight: '1.6' }}>{trade.reflection_bad}</div>
                 </div>
               )}
               {trade.reflection_next && (
                 <div>
-                  <div style={{ fontSize: '14px', color: '#2563eb', marginBottom: '4px', fontWeight: 600 }}>💡 다음에는</div>
-                  <div style={{ fontSize: '14px', color: '#1e293b', lineHeight: '1.6' }}>{trade.reflection_next}</div>
+                  <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#2563eb', marginBottom: '4px', fontWeight: 600 }}>💡 다음에는</div>
+                  <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#1e293b', lineHeight: '1.6' }}>{trade.reflection_next}</div>
                 </div>
               )}
             </Section>
           )}
 
           {trade.news_links && trade.news_links.length > 0 && (
-            <Section title="뉴스 / 공시 링크">
+            <Section title="뉴스 / 공시 링크" isMobile={isMobile}>
               {trade.news_links.filter(l => l).map((link, i) => (
                 <a key={i} href={link} target="_blank" rel="noreferrer" style={{
-                  display: 'block', color: '#2563eb', fontSize: '14px',
+                  display: 'block', color: '#2563eb',
+                  fontSize: isMobile ? '16px' : '14px',
                   marginBottom: '6px', textDecoration: 'none',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>🔗 {link}</a>
@@ -504,7 +498,7 @@ export default function TradeDetail() {
 
       {/* 차트 이미지 그리드 */}
       {imageUrls.length > 0 && (
-        <Section title={`차트 이미지 (${imageUrls.length}장)`}>
+        <Section title={`차트 이미지 (${imageUrls.length}장)`} isMobile={isMobile}>
           <div style={{
             display: 'grid',
             gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(200px, 1fr))',
@@ -524,31 +518,29 @@ export default function TradeDetail() {
         </Section>
       )}
 
-      {/* ── 개선된 이미지 모달 ────────────────────────────────── */}
+      {/* 이미지 모달 */}
       {modalIndex !== null && (
         <div
           ref={modalRef}
           style={{
             position: 'fixed', inset: 0,
-            height: '100dvh',              // ✅ 수정 1: 브라우저 줌 시 높이 기준 명시
+            height: '100dvh',
             background: 'rgba(0,0,0,0.92)',
             zIndex: 1000,
             display: 'flex', flexDirection: 'column',
             touchAction: 'none',
           }}
         >
-          {/* 헤더 — 항상 고정 */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '10px 14px',
             background: 'rgba(0,0,0,0.55)',
             flexShrink: 0,
           }}>
-            {/* X 버튼 — vmin 기반으로 브라우저 줌에 비례해서 작아짐 */}
             <button
               onClick={closeModal}
               style={{
-                width:      'clamp(26px, 4vmin, 38px)',   // ✅ 수정 3
+                width:      'clamp(26px, 4vmin, 38px)',
                 height:     'clamp(26px, 4vmin, 38px)',
                 fontSize:   'clamp(13px, 1.8vmin, 18px)',
                 background: 'rgba(255,255,255,0.18)',
@@ -560,7 +552,6 @@ export default function TradeDetail() {
               }}
             >✕</button>
 
-            {/* 현재 위치 표시 */}
             {imageUrls.length > 1 ? (
               <span style={{
                 color: '#fff', fontSize: '15px', fontWeight: 600,
@@ -571,25 +562,22 @@ export default function TradeDetail() {
               </span>
             ) : <div />}
 
-            {/* 오른쪽 여백 (X 버튼과 대칭) */}
             <div style={{ width: 'clamp(26px, 4vmin, 38px)', flexShrink: 0 }} />
           </div>
 
-          {/* 이미지 영역 */}
           <div style={{
             flex: 1,
-            minHeight: 0,                  // ✅ 수정 2: flex 자식 높이 압축 허용
+            minHeight: 0,
             position: 'relative',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             overflow: 'hidden',
           }}>
-            {/* ◀ 이전 버튼 */}
             {imageUrls.length > 1 && (
               <button
                 onClick={goPrev}
                 style={{
                   position: 'absolute', left: '8px', zIndex: 5,
-                  width:    'clamp(28px, 5vmin, 42px)',   // ✅ 수정 3
+                  width:    'clamp(28px, 5vmin, 42px)',
                   height:   'clamp(28px, 5vmin, 42px)',
                   fontSize: 'clamp(12px, 1.6vmin, 17px)',
                   background: modalIndex > 0
@@ -604,7 +592,6 @@ export default function TradeDetail() {
               >◀</button>
             )}
 
-            {/* 이미지 본체 */}
             <img
               ref={imgRef}
               src={imageUrls[modalIndex]}
@@ -621,13 +608,12 @@ export default function TradeDetail() {
               }}
             />
 
-            {/* ▶ 다음 버튼 */}
             {imageUrls.length > 1 && (
               <button
                 onClick={goNext}
                 style={{
                   position: 'absolute', right: '8px', zIndex: 5,
-                  width:    'clamp(28px, 5vmin, 42px)',   // ✅ 수정 3
+                  width:    'clamp(28px, 5vmin, 42px)',
                   height:   'clamp(28px, 5vmin, 42px)',
                   fontSize: 'clamp(12px, 1.6vmin, 17px)',
                   background: modalIndex < imageUrls.length - 1
@@ -643,7 +629,6 @@ export default function TradeDetail() {
             )}
           </div>
 
-          {/* 점 인디케이터 */}
           {imageUrls.length > 1 && (
             <div style={{
               display: 'flex', justifyContent: 'center', alignItems: 'center',
@@ -660,7 +645,7 @@ export default function TradeDetail() {
                     setModalIndex(i)
                   }}
                   style={{
-                    width:      i === modalIndex                    // ✅ 수정 3
+                    width:      i === modalIndex
                       ? 'clamp(14px, 2.5vmin, 22px)'
                       : 'clamp(5px,  1vmin,   8px)',
                     height:     'clamp(5px, 1vmin, 8px)',
@@ -678,7 +663,6 @@ export default function TradeDetail() {
           )}
         </div>
       )}
-      {/* ──────────────────────────────────────────────────────── */}
 
     </div>
   )

@@ -7,13 +7,22 @@ import { calcProfitAmount, calcProfitRate, calcHoldingDays } from '../lib/tradeH
 
 const GRADES = ['A', 'B', 'C', 'D']
 const MARKETS = ['코스피', '코스닥']
-
 const GRADE_COLORS = { A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#dc2626' }
 
-function SectionTitle({ children }) {
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 640)
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 640)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return isMobile
+}
+
+function SectionTitle({ children, isMobile }) {
   return (
     <h3 style={{
-      fontSize: '15px', fontWeight: 600, color: '#1e293b',
+      fontSize: isMobile ? '16px' : '15px', fontWeight: 600, color: '#1e293b',
       borderLeft: '3px solid #3b82f6', paddingLeft: '10px',
       margin: '28px 0 16px',
     }}>
@@ -22,27 +31,16 @@ function SectionTitle({ children }) {
   )
 }
 
-function Label({ children, required }) {
+function Label({ children, required, isMobile }) {
   return (
-    <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '4px' }}>
+    <label style={{ display: 'block', fontSize: isMobile ? '16px' : '14px', fontWeight: 500, color: '#374151', marginBottom: '4px' }}>
       {children}
       {required && <span style={{ color: '#ef4444', marginLeft: '2px' }}>*</span>}
     </label>
   )
 }
 
-const inputStyle = {
-  width: '100%', padding: '8px 12px', border: '1px solid #d1d5db',
-  borderRadius: '6px', fontSize: '14px', outline: 'none',
-  boxSizing: 'border-box', background: '#fff', color: '#1e293b',
-}
-
-const selectStyle = {
-  ...inputStyle,
-  cursor: 'pointer', appearance: 'auto',
-}
-
-function MultiSelect({ options, selected, onChange, color = '#3b82f6' }) {
+function MultiSelect({ options, selected, onChange, color = '#3b82f6', isMobile }) {
   const toggle = (opt) => {
     if (selected.includes(opt)) onChange(selected.filter(s => s !== opt))
     else onChange([...selected, opt])
@@ -55,7 +53,7 @@ function MultiSelect({ options, selected, onChange, color = '#3b82f6' }) {
           border: `1px solid ${selected.includes(opt) ? color : '#d1d5db'}`,
           background: selected.includes(opt) ? color : '#f9fafb',
           color: selected.includes(opt) ? '#fff' : '#374151',
-          fontSize: '14px', cursor: 'pointer',
+          fontSize: isMobile ? '16px' : '14px', cursor: 'pointer',
         }}>
           {opt}
         </button>
@@ -64,8 +62,7 @@ function MultiSelect({ options, selected, onChange, color = '#3b82f6' }) {
   )
 }
 
-// 시장 구분 — 버튼 2개만 있어서 버튼 방식 유지
-function MarketSelect({ value, onChange }) {
+function MarketSelect({ value, onChange, isMobile }) {
   return (
     <div style={{ display: 'flex', gap: '6px' }}>
       {MARKETS.map(m => {
@@ -77,7 +74,7 @@ function MarketSelect({ value, onChange }) {
             border: `1px solid ${isSelected ? color : '#d1d5db'}`,
             background: isSelected ? color : '#f9fafb',
             color: isSelected ? '#fff' : '#374151',
-            fontSize: '14px', cursor: 'pointer', fontWeight: isSelected ? 600 : 400,
+            fontSize: isMobile ? '16px' : '14px', cursor: 'pointer', fontWeight: isSelected ? 600 : 400,
           }}>
             {m}
           </button>
@@ -89,6 +86,7 @@ function MarketSelect({ value, onChange }) {
 
 export default function NewTrade() {
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -143,6 +141,17 @@ export default function NewTrade() {
   const netProfitRate = hasSell && Number(watchBuyPrice) && Number(watchQuantity)
     ? (netProfitAmount / (Number(watchBuyPrice) * Number(watchQuantity))) * 100
     : 0
+
+  // 인라인 스타일 (isMobile 반응형)
+  const inputStyle = {
+    width: '100%', padding: '8px 12px', border: '1px solid #d1d5db',
+    borderRadius: '6px', fontSize: isMobile ? '16px' : '14px', outline: 'none',
+    boxSizing: 'border-box', background: '#fff', color: '#1e293b',
+  }
+  const selectStyle = {
+    ...inputStyle,
+    cursor: 'pointer', appearance: 'auto',
+  }
 
   useEffect(() => {
     const loadData = async () => {
@@ -309,39 +318,39 @@ export default function NewTrade() {
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px' }}>
 
           {/* ① 기본 거래 정보 */}
-          <SectionTitle>① 기본 거래 정보</SectionTitle>
+          <SectionTitle isMobile={isMobile}>① 기본 거래 정보</SectionTitle>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
             <div>
-              <Label required>종목명</Label>
+              <Label required isMobile={isMobile}>종목명</Label>
               <input style={inputStyle} {...register('stock_name', { required: '종목명을 입력하세요' })} placeholder="예: 삼성전자" />
-              {errors.stock_name && <p style={{ color: '#ef4444', fontSize: '13px', marginTop: '2px' }}>{errors.stock_name.message}</p>}
+              {errors.stock_name && <p style={{ color: '#ef4444', fontSize: isMobile ? '14px' : '13px', marginTop: '2px' }}>{errors.stock_name.message}</p>}
             </div>
             <div>
-              <Label>시장 구분</Label>
-              <MarketSelect value={market} onChange={setMarket} />
+              <Label isMobile={isMobile}>시장 구분</Label>
+              <MarketSelect value={market} onChange={setMarket} isMobile={isMobile} />
             </div>
             <div>
-              <Label required>매수일</Label>
+              <Label required isMobile={isMobile}>매수일</Label>
               <input type="date" style={inputStyle} {...register('buy_date', { required: true })} />
             </div>
             <div>
-              <Label required>매수가 (원)</Label>
+              <Label required isMobile={isMobile}>매수가 (원)</Label>
               <input type="number" style={inputStyle} {...register('buy_price', { required: true })} placeholder="70000" />
             </div>
             <div>
-              <Label>매도일</Label>
+              <Label isMobile={isMobile}>매도일</Label>
               <input type="date" style={inputStyle} {...register('sell_date')} />
             </div>
             <div>
-              <Label>매도가 (원)</Label>
+              <Label isMobile={isMobile}>매도가 (원)</Label>
               <input type="number" style={inputStyle} {...register('sell_price')} placeholder="75000" />
             </div>
             <div>
-              <Label required>수량 (주)</Label>
+              <Label required isMobile={isMobile}>수량 (주)</Label>
               <input type="number" style={inputStyle} {...register('quantity', { required: true })} placeholder="100" />
             </div>
             <div>
-              <Label>포지션 비중 (%)</Label>
+              <Label isMobile={isMobile}>포지션 비중 (%)</Label>
               <input type="number" style={inputStyle} {...register('position_size')} placeholder="30" min="0" max="100" />
             </div>
           </div>
@@ -353,28 +362,28 @@ export default function NewTrade() {
               borderRadius: '8px', padding: '12px 16px', marginTop: '12px',
             }}>
               <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                <span style={{ fontSize: '14px', color: '#0369a1' }}>
+                <span style={{ fontSize: isMobile ? '16px' : '14px', color: '#0369a1' }}>
                   💰 수익금: <strong style={{ color: profitAmount >= 0 ? '#2563eb' : '#dc2626' }}>
                     {profitAmount >= 0 ? '+' : ''}{profitAmount.toLocaleString()}원
                   </strong>
                 </span>
-                <span style={{ fontSize: '14px', color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
+                <span style={{ fontSize: isMobile ? '16px' : '14px', color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
                   📈 수익률: <strong>{profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%</strong>
                 </span>
                 {holdingDays >= 0 && (
-                  <span style={{ fontSize: '14px', color: '#0369a1' }}>
+                  <span style={{ fontSize: isMobile ? '16px' : '14px', color: '#0369a1' }}>
                     📅 보유기간: <strong>{holdingDays}일</strong>
                   </span>
                 )}
               </div>
               <div style={{ borderTop: '1px solid #bae6fd', paddingTop: '8px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '13px', color: '#64748b' }}>
+                <span style={{ fontSize: isMobile ? '14px' : '13px', color: '#64748b' }}>
                   수수료: <strong>{totalFee.toLocaleString()}원</strong>
                   <span style={{ color: '#94a3b8', marginLeft: '4px' }}>
                     (매수 {buyFee.toLocaleString()} + 매도 {sellFee.toLocaleString()} + 세금 {tax.toLocaleString()})
                   </span>
                 </span>
-                <span style={{ fontSize: '13px', color: netProfitAmount >= 0 ? '#2563eb' : '#dc2626', fontWeight: 600 }}>
+                <span style={{ fontSize: isMobile ? '14px' : '13px', color: netProfitAmount >= 0 ? '#2563eb' : '#dc2626', fontWeight: 600 }}>
                   순수익: {netProfitAmount >= 0 ? '+' : ''}{netProfitAmount.toLocaleString()}원
                   ({netProfitRate >= 0 ? '+' : ''}{netProfitRate.toFixed(2)}%)
                 </span>
@@ -383,50 +392,49 @@ export default function NewTrade() {
           )}
 
           {/* ② 분류 정보 */}
-          <SectionTitle>② 분류 정보</SectionTitle>
+          <SectionTitle isMobile={isMobile}>② 분류 정보</SectionTitle>
           {optsLoading ? (
-            <p style={{ color: '#94a3b8', fontSize: '14px' }}>선택지 불러오는 중...</p>
+            <p style={{ color: '#94a3b8', fontSize: isMobile ? '16px' : '14px' }}>선택지 불러오는 중...</p>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
               <div>
-                <Label required>섹터</Label>
+                <Label required isMobile={isMobile}>섹터</Label>
                 <select style={selectStyle} value={sector} onChange={e => setSector(e.target.value)}>
                   <option value="">섹터 선택...</option>
                   {opts.sector.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
               </div>
               <div>
-                <Label required>매매방식</Label>
+                <Label required isMobile={isMobile}>매매방식</Label>
                 <select style={selectStyle} value={tradeStyle} onChange={e => setTradeStyle(e.target.value)}>
                   <option value="">매매방식 선택...</option>
                   {opts.trade_style.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
               </div>
               <div>
-                <Label required>시장상황</Label>
+                <Label required isMobile={isMobile}>시장상황</Label>
                 <select style={selectStyle} value={marketCondition} onChange={e => setMarketCondition(e.target.value)}>
                   <option value="">시장상황 선택...</option>
                   {opts.market_condition.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
               </div>
               <div>
-                <Label>테마 (복수 선택)</Label>
-                <MultiSelect options={opts.theme} selected={themes} onChange={setThemes} color="#8b5cf6" />
+                <Label isMobile={isMobile}>테마 (복수 선택)</Label>
+                <MultiSelect options={opts.theme} selected={themes} onChange={setThemes} color="#8b5cf6" isMobile={isMobile} />
               </div>
             </div>
           )}
 
           {/* ③ 정성 평가 */}
-          <SectionTitle>③ 정성 평가</SectionTitle>
+          <SectionTitle isMobile={isMobile}>③ 정성 평가</SectionTitle>
           {optsLoading ? (
-            <p style={{ color: '#94a3b8', fontSize: '14px' }}>선택지 불러오는 중...</p>
+            <p style={{ color: '#94a3b8', fontSize: isMobile ? '16px' : '14px' }}>선택지 불러오는 중...</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-              {/* 매매등급 — 드롭다운 */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
                 <div>
-                  <Label>매매등급 (계획 대비 실행 품질)</Label>
+                  <Label isMobile={isMobile}>매매등급 (계획 대비 실행 품질)</Label>
                   <select
                     style={{
                       ...selectStyle,
@@ -445,18 +453,16 @@ export default function NewTrade() {
                   </select>
                 </div>
 
-                {/* 감정상태 — 드롭다운 */}
                 <div>
-                  <Label>감정상태 (매매 중 전반적)</Label>
+                  <Label isMobile={isMobile}>감정상태 (매매 중 전반적)</Label>
                   <select style={selectStyle} value={emotionState} onChange={e => setEmotionState(e.target.value)}>
                     <option value="">감정상태 선택...</option>
                     {opts.emotion_before.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
 
-                {/* 매도이유 — 드롭다운 */}
                 <div>
-                  <Label>매도이유</Label>
+                  <Label isMobile={isMobile}>매도이유</Label>
                   <select style={selectStyle} value={sellReason} onChange={e => setSellReason(e.target.value)}>
                     <option value="">매도이유 선택...</option>
                     {opts.sell_reason.map(o => <option key={o} value={o}>{o}</option>)}
@@ -464,34 +470,32 @@ export default function NewTrade() {
                 </div>
               </div>
 
-              {/* 감정 — 복수선택 버튼 태그 */}
               <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '12px', border: '1px solid #e2e8f0' }}>
                 <div style={{ marginBottom: '12px' }}>
-                  <Label>매수 전 감정 (복수 선택)</Label>
-                  <MultiSelect options={opts.emotion_before} selected={emotionBefore} onChange={setEmotionBefore} color="#f59e0b" />
+                  <Label isMobile={isMobile}>매수 전 감정 (복수 선택)</Label>
+                  <MultiSelect options={opts.emotion_before} selected={emotionBefore} onChange={setEmotionBefore} color="#f59e0b" isMobile={isMobile} />
                 </div>
                 <div>
-                  <Label>매도 후 감정 (복수 선택)</Label>
-                  <MultiSelect options={opts.emotion_after} selected={emotionAfter} onChange={setEmotionAfter} color="#10b981" />
+                  <Label isMobile={isMobile}>매도 후 감정 (복수 선택)</Label>
+                  <MultiSelect options={opts.emotion_after} selected={emotionAfter} onChange={setEmotionAfter} color="#10b981" isMobile={isMobile} />
                 </div>
               </div>
 
-              {/* 실수유형 — 복수선택 버튼 태그 */}
               <div style={{ background: '#fff5f5', borderRadius: '8px', padding: '12px', border: '1px solid #fecaca' }}>
                 <div style={{ marginBottom: '12px' }}>
-                  <Label>실수유형 전체 (복수 선택)</Label>
+                  <Label isMobile={isMobile}>실수유형 전체 (복수 선택)</Label>
                   <MultiSelect
                     options={[...new Set([...(opts.mistake_buy || []), ...(opts.mistake_sell || [])])]}
-                    selected={mistakeTypes} onChange={setMistakeTypes} color="#ef4444"
+                    selected={mistakeTypes} onChange={setMistakeTypes} color="#ef4444" isMobile={isMobile}
                   />
                 </div>
                 <div style={{ marginBottom: '12px' }}>
-                  <Label>매수 실수 (복수 선택)</Label>
-                  <MultiSelect options={opts.mistake_buy || []} selected={mistakeBuy} onChange={setMistakeBuy} color="#dc2626" />
+                  <Label isMobile={isMobile}>매수 실수 (복수 선택)</Label>
+                  <MultiSelect options={opts.mistake_buy || []} selected={mistakeBuy} onChange={setMistakeBuy} color="#dc2626" isMobile={isMobile} />
                 </div>
                 <div>
-                  <Label>매도 실수 (복수 선택)</Label>
-                  <MultiSelect options={opts.mistake_sell || []} selected={mistakeSell} onChange={setMistakeSell} color="#b91c1c" />
+                  <Label isMobile={isMobile}>매도 실수 (복수 선택)</Label>
+                  <MultiSelect options={opts.mistake_sell || []} selected={mistakeSell} onChange={setMistakeSell} color="#b91c1c" isMobile={isMobile} />
                 </div>
               </div>
 
@@ -499,7 +503,7 @@ export default function NewTrade() {
           )}
 
           {/* ④ 서술 기록 */}
-          <SectionTitle>④ 서술 기록</SectionTitle>
+          <SectionTitle isMobile={isMobile}>④ 서술 기록</SectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {[
               { name: 'material_context', label: '재료 및 시장상황', placeholder: '왜 이 종목이 움직였는지, 시장 상황은 어땠는지 기록하세요.' },
@@ -508,24 +512,24 @@ export default function NewTrade() {
               { name: 'trade_log', label: '대응 기록', placeholder: '매매 중 어떻게 대응했는지 기록하세요.' },
             ].map(field => (
               <div key={field.name}>
-                <Label>{field.label}</Label>
+                <Label isMobile={isMobile}>{field.label}</Label>
                 <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }}
                   {...register(field.name)} placeholder={field.placeholder} />
               </div>
             ))}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
               <div>
-                <Label>✅ 잘한 점</Label>
+                <Label isMobile={isMobile}>✅ 잘한 점</Label>
                 <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }}
                   {...register('reflection_good')} placeholder="이번 매매에서 잘한 것은?" />
               </div>
               <div>
-                <Label>❌ 아쉬운 점</Label>
+                <Label isMobile={isMobile}>❌ 아쉬운 점</Label>
                 <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }}
                   {...register('reflection_bad')} placeholder="아쉬웠거나 실수한 것은?" />
               </div>
               <div>
-                <Label>🔄 다음에는</Label>
+                <Label isMobile={isMobile}>🔄 다음에는</Label>
                 <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }}
                   {...register('reflection_next')} placeholder="다음에 같은 상황이 오면?" />
               </div>
@@ -533,7 +537,7 @@ export default function NewTrade() {
           </div>
 
           {/* ⑤ 차트 이미지 */}
-          <SectionTitle>⑤ 차트 이미지</SectionTitle>
+          <SectionTitle isMobile={isMobile}>⑤ 차트 이미지</SectionTitle>
           {imagePreviews.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
               {imagePreviews.map((url, i) => (
@@ -562,13 +566,13 @@ export default function NewTrade() {
             <input {...getInputProps()} />
             <div style={{ fontSize: '28px', marginBottom: '6px' }}>{pasteHint ? '✅' : '📸'}</div>
             {pasteHint ? (
-              <div style={{ fontSize: '14px', color: '#16a34a', fontWeight: 600 }}>이미지가 붙여넣어졌습니다!</div>
+              <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#16a34a', fontWeight: 600 }}>이미지가 붙여넣어졌습니다!</div>
             ) : (
               <>
-                <div style={{ fontSize: '14px', color: '#64748b' }}>
+                <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#64748b' }}>
                   {isDragActive ? '여기에 놓으세요!' : '차트 이미지를 드래그하거나 클릭해서 추가'}
                 </div>
-                <div style={{ fontSize: '14px', color: '#94a3b8', marginTop: '4px' }}>
+                <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#94a3b8', marginTop: '4px' }}>
                   📋 차트 캡처 후 Ctrl+V 붙여넣기도 가능합니다
                 </div>
               </>
@@ -576,7 +580,7 @@ export default function NewTrade() {
           </div>
 
           {/* ⑥ 뉴스/공시 링크 */}
-          <SectionTitle>⑥ 뉴스/공시 링크</SectionTitle>
+          <SectionTitle isMobile={isMobile}>⑥ 뉴스/공시 링크</SectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {newsLinks.map((link, i) => (
               <div key={i} style={{ display: 'flex', gap: '6px' }}>
@@ -585,14 +589,17 @@ export default function NewTrade() {
                 {newsLinks.length > 1 && (
                   <button type="button" onClick={() => removeNewsLink(i)} style={{
                     padding: '8px 12px', background: '#fee2e2',
-                    border: '1px solid #fca5a5', borderRadius: '6px', cursor: 'pointer', color: '#dc2626',
+                    border: '1px solid #fca5a5', borderRadius: '6px',
+                    cursor: 'pointer', color: '#dc2626',
+                    fontSize: isMobile ? '16px' : '14px',
                   }}>삭제</button>
                 )}
               </div>
             ))}
             <button type="button" onClick={addNewsLink} style={{
               alignSelf: 'flex-start', padding: '6px 12px', background: '#f1f5f9',
-              border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontSize: '14px',
+              border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer',
+              fontSize: isMobile ? '16px' : '14px',
             }}>+ 링크 추가</button>
           </div>
 
@@ -600,14 +607,18 @@ export default function NewTrade() {
             <div style={{
               marginTop: '16px', padding: '12px', background: '#eff6ff',
               border: '1px solid #bfdbfe', borderRadius: '8px',
-              color: '#2563eb', fontSize: '14px', textAlign: 'center',
+              color: '#2563eb', fontSize: isMobile ? '16px' : '14px', textAlign: 'center',
             }}>
               🔄 이미지 업로드 중... ({imageFiles.length}개)
             </div>
           )}
 
           {error && (
-            <div style={{ marginTop: '16px', padding: '12px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '8px', color: '#dc2626', fontSize: '14px' }}>
+            <div style={{
+              marginTop: '16px', padding: '12px', background: '#fee2e2',
+              border: '1px solid #fca5a5', borderRadius: '8px',
+              color: '#dc2626', fontSize: isMobile ? '16px' : '14px',
+            }}>
               ⚠️ {error}
             </div>
           )}
@@ -617,14 +628,15 @@ export default function NewTrade() {
               padding: '10px 28px',
               background: loading ? '#93c5fd' : '#2563eb',
               color: '#fff', border: 'none', borderRadius: '8px',
-              fontSize: '15px', fontWeight: 600,
+              fontSize: isMobile ? '16px' : '15px', fontWeight: 600,
               cursor: loading ? 'not-allowed' : 'pointer',
             }}>
               {loading ? (imageFiles.length > 0 ? '이미지 업로드 중...' : '저장 중...') : '💾 매매 저장'}
             </button>
             <button type="button" onClick={() => navigate('/journal')} style={{
               padding: '10px 20px', background: '#f1f5f9',
-              border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '15px', cursor: 'pointer',
+              border: '1px solid #cbd5e1', borderRadius: '8px',
+              fontSize: isMobile ? '16px' : '15px', cursor: 'pointer',
             }}>취소</button>
           </div>
 

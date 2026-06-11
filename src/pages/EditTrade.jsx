@@ -5,7 +5,6 @@ import { useDropzone } from 'react-dropzone'
 import { supabase } from '../lib/supabase'
 import { calcProfitAmount, calcProfitRate, calcHoldingDays } from '../lib/tradeHelpers'
 
-// 드롭다운 기본값 (DB 로딩 실패 시 폴백)
 const DEFAULT_OPTIONS = {
   sector: ['에너지', '반도체', '바이오', '금융', '소비재', '화학', '철강', '건설', '운송', '기타'],
   trade_style: ['눌림목', '상한가따라잡기', '돌파매수', '역추세', '스캘핑', '기타'],
@@ -20,25 +19,24 @@ const DEFAULT_OPTIONS = {
 
 const GRADES = ['A', 'B', 'C', 'D']
 
-const label = (text, required) => (
-  <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, color: '#374151', marginBottom: '5px' }}>
-    {text}{required && <span style={{ color: '#dc2626' }}> *</span>}
-  </label>
-)
-
-const inputStyle = {
-  width: '100%', padding: '8px 12px', border: '1px solid #d1d5db',
-  borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', background: '#fff',
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 640)
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 640)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return isMobile
 }
 
-const textareaStyle = {
-  ...inputStyle, resize: 'vertical', minHeight: '80px', lineHeight: '1.6', fontFamily: 'inherit',
-}
-
-function Section({ title, children }) {
+function Section({ title, children, isMobile }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', marginBottom: '16px' }}>
-      <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#64748b', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <h3 style={{
+        fontSize: isMobile ? '16px' : '14px',
+        fontWeight: 700, color: '#64748b', marginBottom: '16px',
+        textTransform: 'uppercase', letterSpacing: '0.05em',
+      }}>
         {title}
       </h3>
       {children}
@@ -54,7 +52,7 @@ function Row({ children, cols = 2 }) {
   )
 }
 
-function TagSelector({ options, selected, onChange, color = '#2563eb' }) {
+function TagSelector({ options, selected, onChange, color = '#2563eb', isMobile }) {
   const toggle = (item) => {
     if (selected.includes(item)) onChange(selected.filter(i => i !== item))
     else onChange([...selected, item])
@@ -65,7 +63,8 @@ function TagSelector({ options, selected, onChange, color = '#2563eb' }) {
         const active = selected.includes(opt)
         return (
           <button key={opt} type="button" onClick={() => toggle(opt)} style={{
-            padding: '4px 12px', borderRadius: '20px', fontSize: '14px', cursor: 'pointer',
+            padding: '4px 12px', borderRadius: '20px',
+            fontSize: isMobile ? '16px' : '14px', cursor: 'pointer',
             background: active ? color + '15' : '#f8fafc',
             color: active ? color : '#64748b',
             border: `1px solid ${active ? color + '60' : '#e2e8f0'}`,
@@ -80,28 +79,21 @@ function TagSelector({ options, selected, onChange, color = '#2563eb' }) {
 export default function EditTrade() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm()
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-
-  // 드롭다운 옵션 (DB에서 불러옴)
   const [options, setOptions] = useState(DEFAULT_OPTIONS)
 
-  // 복수선택 필드
   const [themes, setThemes] = useState([])
   const [emotionBefore, setEmotionBefore] = useState([])
   const [emotionAfter, setEmotionAfter] = useState([])
   const [mistakeBuy, setMistakeBuy] = useState([])
   const [mistakeSell, setMistakeSell] = useState([])
-
-  // 시장 구분
   const [market, setMarket] = useState('')
-
-  // 수수료·세금 설정
   const [feeSettings, setFeeSettings] = useState({ buy_fee_rate: 0.015, sell_fee_rate: 0.015, tax_rate: 0.2 })
 
-  // 이미지 관련
   const [existingImages, setExistingImages] = useState([])
   const [existingUrls, setExistingUrls] = useState([])
   const [removedImages, setRemovedImages] = useState([])
@@ -110,13 +102,29 @@ export default function EditTrade() {
   const [uploadProgress, setUploadProgress] = useState(false)
   const [pasteHint, setPasteHint] = useState(false)
 
+  // 반응형 인라인 스타일
+  const inputStyle = {
+    width: '100%', padding: '8px 12px', border: '1px solid #d1d5db',
+    borderRadius: '8px', fontSize: isMobile ? '16px' : '14px',
+    boxSizing: 'border-box', background: '#fff',
+  }
+  const textareaStyle = {
+    ...inputStyle, resize: 'vertical', minHeight: '80px', lineHeight: '1.6', fontFamily: 'inherit',
+  }
+
+  // label 렌더 함수 (isMobile 클로저 캡처)
+  const labelEl = (text, required) => (
+    <label style={{ display: 'block', fontSize: isMobile ? '16px' : '14px', fontWeight: 600, color: '#374151', marginBottom: '5px' }}>
+      {text}{required && <span style={{ color: '#dc2626' }}> *</span>}
+    </label>
+  )
+
   const buyPrice = watch('buy_price')
   const sellPrice = watch('sell_price')
   const quantity = watch('quantity')
   const buyDate = watch('buy_date')
   const sellDate = watch('sell_date')
 
-  // 기본 수익금·수익률·보유기간
   const profitAmount = buyPrice && sellPrice && quantity
     ? calcProfitAmount(Number(buyPrice), Number(sellPrice), Number(quantity)) : null
   const profitRate = buyPrice && sellPrice
@@ -124,7 +132,6 @@ export default function EditTrade() {
   const holdingDays = buyDate && sellDate
     ? calcHoldingDays(buyDate, sellDate) : null
 
-  // 수수료·세금·순수익 자동계산
   const fee = (buyPrice && sellPrice && quantity)
     ? Math.round(
         Number(buyPrice) * Number(quantity) * (feeSettings.buy_fee_rate / 100) +
@@ -150,7 +157,6 @@ export default function EditTrade() {
     fetchTrade()
   }, [id])
 
-  // dropdown_options 테이블에서 옵션 불러오기
   const loadOptions = async () => {
     const { data, error } = await supabase
       .from('dropdown_options')
@@ -167,7 +173,6 @@ export default function EditTrade() {
       }
     })
 
-    // DB에 해당 카테고리 데이터가 있으면 기본값 대신 DB 값만 사용
     const categories = [...new Set(data.map(r => r.category))]
     categories.forEach(cat => {
       grouped[cat] = data.filter(r => r.category === cat).map(r => r.label)
@@ -176,7 +181,6 @@ export default function EditTrade() {
     setOptions(grouped)
   }
 
-  // app_settings에서 수수료·세율 불러오기
   const loadFeeSettings = async () => {
     const { data, error } = await supabase
       .from('app_settings')
@@ -212,21 +216,16 @@ export default function EditTrade() {
     ]
     fields.forEach(f => setValue(f, data[f] || ''))
 
-    // 시장 구분
     setMarket(data.market || '')
-
-    // 복수선택 필드 복원
     setThemes(data.themes || [])
     setEmotionBefore(data.emotion_before || [])
     setEmotionAfter(data.emotion_after || [])
     setMistakeBuy(data.mistake_buy || [])
     setMistakeSell(data.mistake_sell || [])
 
-    // 뉴스 링크
     const links = data.news_links || []
     for (let i = 0; i < 3; i++) setValue(`news_link_${i}`, links[i] || '')
 
-    // 이미지
     if (data.chart_images && data.chart_images.length > 0) {
       setExistingImages(data.chart_images)
       const urls = data.chart_images.map(path => {
@@ -239,7 +238,6 @@ export default function EditTrade() {
     setLoading(false)
   }
 
-  // 이미지 추가 공통 함수
   const addNewImages = useCallback((files) => {
     const imageFiles = files.filter(f => f.type.startsWith('image/'))
     if (imageFiles.length === 0) return
@@ -256,7 +254,6 @@ export default function EditTrade() {
     onDrop, accept: { 'image/*': [] }, multiple: true,
   })
 
-  // 붙여넣기 이벤트
   useEffect(() => {
     const handlePaste = (e) => {
       const items = e.clipboardData?.items
@@ -293,12 +290,10 @@ export default function EditTrade() {
     setUploadProgress(true)
 
     try {
-      // 1. 삭제 표시된 기존 이미지 제거
       if (removedImages.length > 0) {
         await supabase.storage.from('chart-images').remove(removedImages)
       }
 
-      // 2. 새 이미지 업로드
       const uploadedPaths = []
       for (const file of newFiles) {
         const ext = file.name.split('.').pop() || 'png'
@@ -309,12 +304,10 @@ export default function EditTrade() {
 
       const finalImagePaths = [...existingImages, ...uploadedPaths]
 
-      // 3. 뉴스 링크
       const newsLinks = [0, 1, 2]
         .map(i => formData[`news_link_${i}`])
         .filter(l => l && l.trim())
 
-      // 4. DB 업데이트
       const payload = {
         stock_name: formData.stock_name,
         market: market || null,
@@ -374,7 +367,8 @@ export default function EditTrade() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
         <button onClick={() => navigate(-1)} style={{
           padding: '6px 12px', background: '#fff', border: '1px solid #e2e8f0',
-          borderRadius: '8px', cursor: 'pointer', fontSize: '14px', color: '#475569',
+          borderRadius: '8px', cursor: 'pointer',
+          fontSize: isMobile ? '16px' : '14px', color: '#475569',
         }}>← 뒤로</button>
         <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1e293b' }}>✏️ 매매 수정</h2>
       </div>
@@ -390,14 +384,14 @@ export default function EditTrade() {
           }}>
             <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginBottom: netProfitAmount !== null ? '12px' : 0 }}>
               <div>
-                <div style={{ fontSize: '13px', color: '#94a3b8' }}>수익률</div>
+                <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>수익률</div>
                 <div style={{ fontSize: '22px', fontWeight: 700, color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
                   {profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%
                 </div>
               </div>
               {profitAmount !== null && (
                 <div>
-                  <div style={{ fontSize: '13px', color: '#94a3b8' }}>수익금</div>
+                  <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>수익금</div>
                   <div style={{ fontSize: '22px', fontWeight: 700, color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
                     {profitAmount >= 0 ? '+' : ''}{Math.round(profitAmount).toLocaleString()}원
                   </div>
@@ -405,42 +399,41 @@ export default function EditTrade() {
               )}
               {holdingDays !== null && (
                 <div>
-                  <div style={{ fontSize: '13px', color: '#94a3b8' }}>보유기간</div>
+                  <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>보유기간</div>
                   <div style={{ fontSize: '22px', fontWeight: 700, color: '#1e293b' }}>{holdingDays}일</div>
                 </div>
               )}
             </div>
 
-            {/* 수수료·세금·순수익 */}
             {netProfitAmount !== null && (
               <div style={{
                 display: 'flex', gap: '16px', flexWrap: 'wrap',
                 paddingTop: '12px', borderTop: '1px solid #e2e8f0',
               }}>
                 <div>
-                  <div style={{ fontSize: '13px', color: '#94a3b8' }}>수수료</div>
-                  <div style={{ fontSize: '15px', fontWeight: 600, color: '#dc2626' }}>
+                  <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>수수료</div>
+                  <div style={{ fontSize: isMobile ? '16px' : '15px', fontWeight: 600, color: '#dc2626' }}>
                     -{fee !== null ? fee.toLocaleString() : 0}원
                   </div>
                 </div>
                 {tax !== null && tax > 0 && (
                   <div>
-                    <div style={{ fontSize: '13px', color: '#94a3b8' }}>세금</div>
-                    <div style={{ fontSize: '15px', fontWeight: 600, color: '#dc2626' }}>
+                    <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>세금</div>
+                    <div style={{ fontSize: isMobile ? '16px' : '15px', fontWeight: 600, color: '#dc2626' }}>
                       -{tax.toLocaleString()}원
                     </div>
                   </div>
                 )}
                 <div>
-                  <div style={{ fontSize: '13px', color: '#94a3b8' }}>순수익금</div>
-                  <div style={{ fontSize: '15px', fontWeight: 700, color: netProfitAmount >= 0 ? '#2563eb' : '#dc2626' }}>
+                  <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>순수익금</div>
+                  <div style={{ fontSize: isMobile ? '16px' : '15px', fontWeight: 700, color: netProfitAmount >= 0 ? '#2563eb' : '#dc2626' }}>
                     {netProfitAmount >= 0 ? '+' : ''}{Math.round(netProfitAmount).toLocaleString()}원
                   </div>
                 </div>
                 {netProfitRate !== null && (
                   <div>
-                    <div style={{ fontSize: '13px', color: '#94a3b8' }}>순수익률</div>
-                    <div style={{ fontSize: '15px', fontWeight: 700, color: netProfitRate >= 0 ? '#2563eb' : '#dc2626' }}>
+                    <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>순수익률</div>
+                    <div style={{ fontSize: isMobile ? '16px' : '15px', fontWeight: 700, color: netProfitRate >= 0 ? '#2563eb' : '#dc2626' }}>
                       {netProfitRate >= 0 ? '+' : ''}{netProfitRate.toFixed(2)}%
                     </div>
                   </div>
@@ -451,22 +444,23 @@ export default function EditTrade() {
         )}
 
         {/* 기본 거래 정보 */}
-        <Section title="기본 거래 정보">
+        <Section title="기본 거래 정보" isMobile={isMobile}>
           <div style={{ marginBottom: '12px' }}>
-            {label('종목명', true)}
+            {labelEl('종목명', true)}
             <input {...register('stock_name', { required: '종목명을 입력해주세요' })}
               style={{ ...inputStyle, borderColor: errors.stock_name ? '#dc2626' : '#d1d5db' }}
               placeholder="예: 삼성전자" />
-            {errors.stock_name && <p style={{ color: '#dc2626', fontSize: '14px', marginTop: '4px' }}>{errors.stock_name.message}</p>}
+            {errors.stock_name && <p style={{ color: '#dc2626', fontSize: isMobile ? '16px' : '14px', marginTop: '4px' }}>{errors.stock_name.message}</p>}
           </div>
 
           {/* 시장 구분 */}
           <div style={{ marginBottom: '12px' }}>
-            {label('시장 구분')}
+            {labelEl('시장 구분')}
             <div style={{ display: 'flex', gap: '8px' }}>
               {['코스피', '코스닥'].map(m => (
                 <button key={m} type="button" onClick={() => setMarket(market === m ? '' : m)} style={{
-                  padding: '7px 20px', borderRadius: '8px', fontSize: '14px', cursor: 'pointer',
+                  padding: '7px 20px', borderRadius: '8px',
+                  fontSize: isMobile ? '16px' : '14px', cursor: 'pointer',
                   fontWeight: market === m ? 700 : 400,
                   background: market === m ? '#1e293b' : '#f8fafc',
                   color: market === m ? '#fff' : '#64748b',
@@ -479,48 +473,48 @@ export default function EditTrade() {
 
           <Row>
             <div>
-              {label('매수일', true)}
+              {labelEl('매수일', true)}
               <input type="date" {...register('buy_date', { required: true })} style={inputStyle} />
             </div>
             <div>
-              {label('매수가 (원)', true)}
+              {labelEl('매수가 (원)', true)}
               <input type="number" {...register('buy_price', { required: true })} style={inputStyle} placeholder="0" />
             </div>
           </Row>
           <Row>
             <div>
-              {label('매도일')}
+              {labelEl('매도일')}
               <input type="date" {...register('sell_date')} style={inputStyle} />
             </div>
             <div>
-              {label('매도가 (원)')}
+              {labelEl('매도가 (원)')}
               <input type="number" {...register('sell_price')} style={inputStyle} placeholder="0" />
             </div>
           </Row>
           <Row>
             <div>
-              {label('수량 (주)')}
+              {labelEl('수량 (주)')}
               <input type="number" {...register('quantity')} style={inputStyle} placeholder="0" />
             </div>
             <div>
-              {label('포지션 비중 (%)')}
+              {labelEl('포지션 비중 (%)')}
               <input type="number" {...register('position_size')} style={inputStyle} placeholder="0~100" min="0" max="100" />
             </div>
           </Row>
         </Section>
 
         {/* 분류 정보 */}
-        <Section title="분류 정보">
+        <Section title="분류 정보" isMobile={isMobile}>
           <Row>
             <div>
-              {label('섹터')}
+              {labelEl('섹터')}
               <select {...register('sector')} style={inputStyle}>
                 <option value="">선택</option>
                 {options.sector.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
-              {label('매매방식')}
+              {labelEl('매매방식')}
               <select {...register('trade_style')} style={inputStyle}>
                 <option value="">선택</option>
                 {options.trade_style.map(s => <option key={s} value={s}>{s}</option>)}
@@ -528,30 +522,30 @@ export default function EditTrade() {
             </div>
           </Row>
           <div style={{ marginBottom: '12px' }}>
-            {label('시장상황')}
+            {labelEl('시장상황')}
             <select {...register('market_condition')} style={inputStyle}>
               <option value="">선택</option>
               {options.market_condition.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
-            {label('테마 (복수 선택 가능)')}
-            <TagSelector options={options.theme} selected={themes} onChange={setThemes} color="#7c3aed" />
+            {labelEl('테마 (복수 선택 가능)')}
+            <TagSelector options={options.theme} selected={themes} onChange={setThemes} color="#7c3aed" isMobile={isMobile} />
           </div>
         </Section>
 
         {/* 정성 평가 */}
-        <Section title="정성 평가">
+        <Section title="정성 평가" isMobile={isMobile}>
           <Row cols={2}>
             <div>
-              {label('매매등급')}
+              {labelEl('매매등급')}
               <select {...register('trade_grade')} style={inputStyle}>
                 <option value="">선택</option>
                 {GRADES.map(g => <option key={g} value={g}>등급 {g}</option>)}
               </select>
             </div>
             <div>
-              {label('매도이유')}
+              {labelEl('매도이유')}
               <select {...register('sell_reason')} style={inputStyle}>
                 <option value="">선택</option>
                 {options.sell_reason.map(r => <option key={r} value={r}>{r}</option>)}
@@ -559,92 +553,68 @@ export default function EditTrade() {
             </div>
           </Row>
 
-          {/* 매수 전 감정 */}
           <div style={{ marginBottom: '12px' }}>
-            {label('매수 전 감정 (복수 선택 가능)')}
-            <TagSelector
-              options={options.emotion_before}
-              selected={emotionBefore}
-              onChange={setEmotionBefore}
-              color="#f59e0b"
-            />
+            {labelEl('매수 전 감정 (복수 선택 가능)')}
+            <TagSelector options={options.emotion_before} selected={emotionBefore} onChange={setEmotionBefore} color="#f59e0b" isMobile={isMobile} />
           </div>
 
-          {/* 매도 후 감정 */}
           <div style={{ marginBottom: '12px' }}>
-            {label('매도 후 감정 (복수 선택 가능)')}
-            <TagSelector
-              options={options.emotion_after}
-              selected={emotionAfter}
-              onChange={setEmotionAfter}
-              color="#8b5cf6"
-            />
+            {labelEl('매도 후 감정 (복수 선택 가능)')}
+            <TagSelector options={options.emotion_after} selected={emotionAfter} onChange={setEmotionAfter} color="#8b5cf6" isMobile={isMobile} />
           </div>
 
-          {/* 매수 실수 */}
           <div style={{ marginBottom: '12px' }}>
-            {label('매수 실수 (복수 선택 가능)')}
-            <TagSelector
-              options={options.mistake_buy}
-              selected={mistakeBuy}
-              onChange={setMistakeBuy}
-              color="#dc2626"
-            />
+            {labelEl('매수 실수 (복수 선택 가능)')}
+            <TagSelector options={options.mistake_buy} selected={mistakeBuy} onChange={setMistakeBuy} color="#dc2626" isMobile={isMobile} />
           </div>
 
-          {/* 매도 실수 */}
           <div>
-            {label('매도 실수 (복수 선택 가능)')}
-            <TagSelector
-              options={options.mistake_sell}
-              selected={mistakeSell}
-              onChange={setMistakeSell}
-              color="#ea580c"
-            />
+            {labelEl('매도 실수 (복수 선택 가능)')}
+            <TagSelector options={options.mistake_sell} selected={mistakeSell} onChange={setMistakeSell} color="#ea580c" isMobile={isMobile} />
           </div>
         </Section>
 
-        {/* 서술 정보 */}
-        <Section title="매매 근거">
+        {/* 매매 근거 */}
+        <Section title="매매 근거" isMobile={isMobile}>
           <div style={{ marginBottom: '12px' }}>
-            {label('재료 및 시장상황')}
+            {labelEl('재료 및 시장상황')}
             <textarea {...register('material_context')} style={textareaStyle} placeholder="어떤 재료(뉴스/공시/테마)로 진입했는지 기록하세요" />
           </div>
           <div style={{ marginBottom: '12px' }}>
-            {label('진입근거')}
+            {labelEl('진입근거')}
             <textarea {...register('entry_reason')} style={textareaStyle} placeholder="기술적/재료적 진입 근거를 기록하세요" />
           </div>
           <div style={{ marginBottom: '12px' }}>
-            {label('손절선 사전 설정')}
+            {labelEl('손절선 사전 설정')}
             <textarea {...register('stop_loss_plan')} style={{ ...textareaStyle, minHeight: '60px' }} placeholder="진입 전 설정한 손절가/손절 조건" />
           </div>
           <div>
-            {label('대응 기록')}
+            {labelEl('대응 기록')}
             <textarea {...register('trade_log')} style={textareaStyle} placeholder="매매 중 어떻게 대응했는지 기록하세요" />
           </div>
         </Section>
 
         {/* 성찰 */}
-        <Section title="성찰">
+        <Section title="성찰" isMobile={isMobile}>
           <div style={{ marginBottom: '12px' }}>
-            {label('✅ 잘한 점')}
+            {labelEl('✅ 잘한 점')}
             <textarea {...register('reflection_good')} style={textareaStyle} placeholder="이번 매매에서 잘한 점은?" />
           </div>
           <div style={{ marginBottom: '12px' }}>
-            {label('❌ 아쉬운 점')}
+            {labelEl('❌ 아쉬운 점')}
             <textarea {...register('reflection_bad')} style={textareaStyle} placeholder="아쉬웠던 점, 실수한 점은?" />
           </div>
           <div>
-            {label('💡 다음에는')}
+            {labelEl('💡 다음에는')}
             <textarea {...register('reflection_next')} style={textareaStyle} placeholder="다음 번에 어떻게 개선할 것인지?" />
           </div>
         </Section>
 
         {/* 차트 이미지 */}
-        <Section title="차트 이미지">
+        <Section title="차트 이미지" isMobile={isMobile}>
           {existingUrls.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>기존 이미지</div>
+              <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#64748b', marginBottom: '8px' }}>기존 이미지</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                 {existingUrls.map((url, i) => (
                   <div key={i} style={{ position: 'relative', width: '120px', height: '80px' }}>
@@ -667,7 +637,7 @@ export default function EditTrade() {
 
           {newPreviews.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>새로 추가할 이미지</div>
+              <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#64748b', marginBottom: '8px' }}>새로 추가할 이미지</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                 {newPreviews.map((url, i) => (
                   <div key={i} style={{ position: 'relative', width: '120px', height: '80px' }}>
@@ -700,15 +670,15 @@ export default function EditTrade() {
               {pasteHint ? '✅' : '📸'}
             </div>
             {pasteHint ? (
-              <div style={{ fontSize: '14px', color: '#16a34a', fontWeight: 600 }}>
+              <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#16a34a', fontWeight: 600 }}>
                 이미지가 붙여넣어졌습니다!
               </div>
             ) : (
               <>
-                <div style={{ fontSize: '14px', color: '#64748b' }}>
+                <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#64748b' }}>
                   {isDragActive ? '여기에 놓으세요!' : '차트 이미지를 드래그하거나 클릭해서 추가하세요'}
                 </div>
-                <div style={{ fontSize: '14px', color: '#94a3b8', marginTop: '4px' }}>
+                <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#94a3b8', marginTop: '4px' }}>
                   📋 차트 캡처 후 Ctrl+V 붙여넣기도 가능합니다 · JPG, PNG, GIF 지원
                 </div>
               </>
@@ -717,7 +687,7 @@ export default function EditTrade() {
         </Section>
 
         {/* 뉴스 링크 */}
-        <Section title="뉴스 / 공시 링크">
+        <Section title="뉴스 / 공시 링크" isMobile={isMobile}>
           {[0, 1, 2].map(i => (
             <div key={i} style={{ marginBottom: '8px' }}>
               <input {...register(`news_link_${i}`)} style={inputStyle}
@@ -730,12 +700,15 @@ export default function EditTrade() {
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
           <button type="button" onClick={() => navigate(-1)} style={{
             padding: '10px 24px', background: '#fff', border: '1px solid #d1d5db',
-            borderRadius: '8px', fontSize: '15px', cursor: 'pointer', color: '#374151',
+            borderRadius: '8px',
+            fontSize: isMobile ? '16px' : '15px',
+            cursor: 'pointer', color: '#374151',
           }}>취소</button>
           <button type="submit" disabled={saving} style={{
             padding: '10px 32px', background: saving ? '#93c5fd' : '#2563eb',
             color: '#fff', border: 'none', borderRadius: '8px',
-            fontSize: '15px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
+            fontSize: isMobile ? '16px' : '15px', fontWeight: 700,
+            cursor: saving ? 'not-allowed' : 'pointer',
           }}>
             {saving ? (uploadProgress ? '이미지 업로드 중...' : '저장 중...') : '💾 저장하기'}
           </button>
