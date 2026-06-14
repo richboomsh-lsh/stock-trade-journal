@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Save, Settings as SettingsIcon } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, Settings as SettingsIcon, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 const useIsMobile = () => {
@@ -14,37 +14,68 @@ const useIsMobile = () => {
 };
 
 const CATEGORIES = [
-  { key: 'sector',          label: '섹터' },
-  { key: 'theme',           label: '테마' },
-  { key: 'trade_style',     label: '매매방식' },
-  { key: 'market_condition',label: '시장상황' },
-  { key: 'emotion_before',  label: '매수 전 감정' },
-  { key: 'emotion_after',   label: '매수 후 감정' },
-  { key: 'sell_reason',     label: '매도이유' },
-  { key: 'mistake_buy',     label: '매수 실수' },
-  { key: 'mistake_sell',    label: '매도 실수' },
+  { key: 'sector',           label: '섹터' },
+  { key: 'theme',            label: '테마' },
+  { key: 'trade_style',      label: '매매방식' },
+  { key: 'market_condition', label: '시장상황' },
+  { key: 'emotion_before',   label: '매수 전 감정' },
+  { key: 'emotion_after',    label: '매도 후 감정' },
+  { key: 'sell_reason',      label: '매도이유' },
+  { key: 'mistake_buy',      label: '매수 실수' },
+  { key: 'mistake_sell',     label: '매도 실수' },
 ];
+
+// ── 천단위 콤마 헬퍼
+function toDisplay(raw) {
+  if (raw === '' || raw === null || raw === undefined) return '';
+  const n = Number(raw);
+  if (isNaN(n)) return '';
+  return n.toLocaleString();
+}
+function fromDisplay(str) {
+  return str.replace(/,/g, '');
+}
+
+// ── DB 저장값(소수) → 화면 표시값(%) 변환
+//    0.00015  →  "0.015"
+//    0.0018   →  "0.18"
+function rateToDisplay(dbVal) {
+  if (dbVal === '' || dbVal === null || dbVal === undefined) return '';
+  // 소수점 6자리까지 반올림해서 부동소수점 오차 제거
+  const pct = Math.round(Number(dbVal) * 100 * 1000000) / 1000000;
+  return String(pct);
+}
+
+// ── 화면 입력값(%) → DB 저장값(소수) 변환
+//    "0.015"  →  0.00015
+//    "0.18"   →  0.0018
+function rateFromDisplay(str) {
+  if (str === '' || str === null) return null;
+  const pct = parseFloat(str);
+  if (isNaN(pct)) return null;
+  return Math.round(pct / 100 * 1000000) / 1000000;
+}
 
 export default function Settings() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
-  // ── 자산·수수료 상태
-  const [assetForm, setAssetForm] = useState({
-    total_assets: '',
-    buy_fee_rate: '',
-    sell_fee_rate: '',
-    tax_rate: '',
-  });
+  // ── 자산·수수료 상태 (화면 표시용 — % 단위, 총자산은 콤마 포함 문자열)
+  const [totalAssetsDisplay, setTotalAssetsDisplay] = useState(''); // 콤마 포함 문자열
+  const [totalAssetsRaw, setTotalAssetsRaw]         = useState(''); // 순수 숫자 문자열
+  const [buyFeeDisplay, setBuyFeeDisplay]           = useState(''); // % 단위 문자열
+  const [sellFeeDisplay, setSellFeeDisplay]         = useState(''); // % 단위 문자열
+  const [taxDisplay, setTaxDisplay]                 = useState(''); // % 단위 문자열
+
   const [assetSaving, setAssetSaving] = useState(false);
-  const [assetMsg, setAssetMsg] = useState(null); // { type: 'ok'|'err', text }
+  const [assetMsg, setAssetMsg]       = useState(null); // { type: 'ok'|'err'|'info', text }
 
   // ── 드롭다운 상태
   const [activeTab, setActiveTab] = useState('sector');
-  const [options, setOptions] = useState({}); // { sector: [{id,label,sort_order}, ...], ... }
-  const [newLabel, setNewLabel] = useState('');
+  const [options, setOptions]     = useState({});
+  const [newLabel, setNewLabel]   = useState('');
   const [optLoading, setOptLoading] = useState(false);
-  const [optMsg, setOptMsg] = useState(null);
+  const [optMsg, setOptMsg]         = useState(null);
 
   // ── 초기 데이터 로드
   useEffect(() => {
@@ -53,23 +84,23 @@ export default function Settings() {
   }, []);
 
   async function loadAssetSettings() {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('app_settings')
       .select('*')
       .eq('id', 1)
       .single();
     if (data) {
-      setAssetForm({
-        total_assets: data.total_assets ?? '',
-        buy_fee_rate: data.buy_fee_rate ?? '',
-        sell_fee_rate: data.sell_fee_rate ?? '',
-        tax_rate: data.tax_rate ?? '',
-      });
+      const raw = String(data.total_assets ?? '');
+      setTotalAssetsRaw(raw);
+      setTotalAssetsDisplay(raw === '' ? '' : Number(raw).toLocaleString());
+      setBuyFeeDisplay(rateToDisplay(data.buy_fee_rate));
+      setSellFeeDisplay(rateToDisplay(data.sell_fee_rate));
+      setTaxDisplay(rateToDisplay(data.tax_rate));
     }
   }
 
   async function loadAllOptions() {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('dropdown_options')
       .select('*')
       .order('category')
@@ -86,25 +117,111 @@ export default function Settings() {
     }
   }
 
-  // ── 자산 저장
+  // ── 총 자산 입력 핸들러 (천단위 콤마)
+  function handleTotalAssetsChange(e) {
+    const raw = fromDisplay(e.target.value);
+    if (raw === '' || /^\d+$/.test(raw)) {
+      setTotalAssetsRaw(raw);
+      setTotalAssetsDisplay(raw === '' ? '' : Number(raw).toLocaleString());
+    }
+  }
+
+  // ── 저장 + 기존 거래 재계산
   async function handleAssetSave() {
     setAssetSaving(true);
-    setAssetMsg(null);
-    const payload = {
-      id: 1,
-      total_assets: assetForm.total_assets === '' ? null : Number(assetForm.total_assets),
-      buy_fee_rate: assetForm.buy_fee_rate === '' ? null : Number(assetForm.buy_fee_rate),
-      sell_fee_rate: assetForm.sell_fee_rate === '' ? null : Number(assetForm.sell_fee_rate),
-      tax_rate: assetForm.tax_rate === '' ? null : Number(assetForm.tax_rate),
-    };
-    const { error } = await supabase.from('app_settings').upsert(payload);
-    setAssetSaving(false);
-    if (error) {
-      setAssetMsg({ type: 'err', text: '저장 실패: ' + error.message });
-    } else {
-      setAssetMsg({ type: 'ok', text: '✅ 저장되었습니다!' });
-      setTimeout(() => setAssetMsg(null), 3000);
+    setAssetMsg({ type: 'info', text: '⏳ 저장 및 수수료 재계산 중...' });
+
+    const buyFeeRate  = rateFromDisplay(buyFeeDisplay);
+    const sellFeeRate = rateFromDisplay(sellFeeDisplay);
+    const taxRate     = rateFromDisplay(taxDisplay);
+    const totalAssets = totalAssetsRaw === '' ? null : Number(totalAssetsRaw);
+
+    // 1) app_settings 저장
+    const { error: settingsError } = await supabase
+      .from('app_settings')
+      .upsert({
+        id: 1,
+        total_assets:  totalAssets,
+        buy_fee_rate:  buyFeeRate,
+        sell_fee_rate: sellFeeRate,
+        tax_rate:      taxRate,
+      });
+
+    if (settingsError) {
+      setAssetSaving(false);
+      setAssetMsg({ type: 'err', text: '저장 실패: ' + settingsError.message });
+      return;
     }
+
+    // 2) 완료된 거래 전체 재계산 (sell_price가 있는 것만)
+    if (buyFeeRate !== null && sellFeeRate !== null && taxRate !== null) {
+      const { data: trades, error: fetchError } = await supabase
+        .from('trades')
+        .select('id, buy_price, sell_price, quantity, profit_amount')
+        .not('sell_price', 'is', null)
+        .not('buy_price', 'is', null)
+        .not('quantity', 'is', null);
+
+      if (!fetchError && trades && trades.length > 0) {
+        const updates = trades.map(t => {
+          const bp  = Number(t.buy_price);
+          const sp  = Number(t.sell_price);
+          const qty = Number(t.quantity);
+
+          const profitAmount = (sp - bp) * qty;
+          const fee = Math.round((bp * qty * buyFeeRate + sp * qty * sellFeeRate) * 100) / 100;
+          const tax = Math.round(sp * qty * taxRate * 100) / 100;
+          const netProfitAmount = Math.round((profitAmount - fee - tax) * 100) / 100;
+          const netProfitRate   = bp > 0
+            ? Math.round(netProfitAmount / (bp * qty) * 100 * 10000) / 10000
+            : 0;
+
+          return {
+            id: t.id,
+            fee,
+            tax,
+            net_profit_amount: netProfitAmount,
+            net_profit_rate:   netProfitRate,
+          };
+        });
+
+        // 개별 update (upsert는 NOT NULL 컬럼 충돌 위험)
+        const results = await Promise.all(
+          updates.map(u =>
+            supabase
+              .from('trades')
+              .update({
+                fee:               u.fee,
+                tax:               u.tax,
+                net_profit_amount: u.net_profit_amount,
+                net_profit_rate:   u.net_profit_rate,
+              })
+              .eq('id', u.id)
+          )
+        );
+
+        const updateError = results.find(r => r.error)?.error;
+        if (updateError) {
+          setAssetSaving(false);
+          setAssetMsg({ type: 'err', text: '수수료 재계산 업데이트 실패: ' + updateError.message });
+          return;
+        }
+
+        setAssetSaving(false);
+        setAssetMsg({
+          type: 'ok',
+          text: `✅ 저장 완료! 기존 매매 ${trades.length}건 수수료·세금 재계산 완료`,
+        });
+      } else {
+        setAssetSaving(false);
+        setAssetMsg({ type: 'ok', text: '✅ 설정이 저장되었습니다.' });
+      }
+    } else {
+      setAssetSaving(false);
+      setAssetMsg({ type: 'ok', text: '✅ 설정이 저장되었습니다.' });
+    }
+
+    setTimeout(() => setAssetMsg(null), 5000);
   }
 
   // ── 드롭다운 항목 추가
@@ -149,7 +266,7 @@ export default function Settings() {
     }
   }
 
-  // ── 스타일 변수
+  // ── 스타일
   const cardStyle = {
     background: '#fff',
     borderRadius: 12,
@@ -159,20 +276,40 @@ export default function Settings() {
   };
   const labelStyle = {
     display: 'block',
-    fontSize: 13,
+    fontSize: isMobile ? '14px' : '13px',
     color: '#64748b',
     marginBottom: 4,
     fontWeight: 500,
   };
   const inputStyle = {
     width: '100%',
-    border: '1px solid #cbd5e1',
+    border: '1.5px solid #d1d5db',
     borderRadius: 8,
     padding: '9px 12px',
-    fontSize: 14,
+    fontSize: isMobile ? '16px' : '14px',
     color: '#1e293b',
     boxSizing: 'border-box',
     outline: 'none',
+    background: '#fff',
+  };
+  // 수수료율 입력 — 오른쪽에 % 단위 표시를 위한 래퍼
+  const rateWrapStyle = {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+  };
+  const rateInputStyle = {
+    ...inputStyle,
+    paddingRight: '36px', // % 표시 공간
+  };
+  const rateSuffixStyle = {
+    position: 'absolute',
+    right: '12px',
+    color: '#64748b',
+    fontSize: isMobile ? '15px' : '13px',
+    fontWeight: 600,
+    pointerEvents: 'none',
+    userSelect: 'none',
   };
   const btnPrimary = {
     background: '#2563eb',
@@ -180,7 +317,7 @@ export default function Settings() {
     border: 'none',
     borderRadius: 8,
     padding: '10px 20px',
-    fontSize: 14,
+    fontSize: isMobile ? '16px' : '14px',
     fontWeight: 600,
     cursor: 'pointer',
     display: 'flex',
@@ -234,63 +371,117 @@ export default function Settings() {
         <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b', marginBottom: 12 }}>
           💰 자산 및 수수료 설정
         </div>
+
+        {/* 안내 박스 */}
+        <div style={{
+          background: '#eff6ff',
+          border: '1px solid #bfdbfe',
+          borderRadius: 8,
+          padding: '10px 14px',
+          marginBottom: 14,
+          fontSize: isMobile ? '14px' : '13px',
+          color: '#1d4ed8',
+          lineHeight: 1.6,
+        }}>
+          <strong>수수료율 입력 안내</strong><br />
+          키움증권 기준: 매수·매도 수수료율 <strong>0.015%</strong>, 증권거래세 <strong>0.18%</strong><br />
+          → % 숫자 그대로 입력하세요. (예: 0.015 입력 = 0.015% 적용)
+        </div>
+
         <div style={cardStyle}>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
+
+            {/* 총 자산 */}
             <div>
               <label style={labelStyle}>총 자산 (원)</label>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 style={inputStyle}
-                value={assetForm.total_assets}
-                onChange={e => setAssetForm(p => ({ ...p, total_assets: e.target.value }))}
-                placeholder="예: 10000000"
+                value={totalAssetsDisplay}
+                onChange={handleTotalAssetsChange}
+                placeholder="예: 40,000,000"
               />
             </div>
+
+            {/* 매수 수수료율 */}
             <div>
-              <label style={labelStyle}>매수 수수료율</label>
-              <input
-                type="number"
-                step="0.000001"
-                style={inputStyle}
-                value={assetForm.buy_fee_rate}
-                onChange={e => setAssetForm(p => ({ ...p, buy_fee_rate: e.target.value }))}
-                placeholder="예: 0.000150"
-              />
+              <label style={labelStyle}>매수 수수료율 (%)</label>
+              <div style={rateWrapStyle}>
+                <input
+                  type="number"
+                  step="0.001"
+                  style={rateInputStyle}
+                  value={buyFeeDisplay}
+                  onChange={e => setBuyFeeDisplay(e.target.value)}
+                  placeholder="예: 0.015"
+                />
+                <span style={rateSuffixStyle}>%</span>
+              </div>
             </div>
+
+            {/* 매도 수수료율 */}
             <div>
-              <label style={labelStyle}>매도 수수료율</label>
-              <input
-                type="number"
-                step="0.000001"
-                style={inputStyle}
-                value={assetForm.sell_fee_rate}
-                onChange={e => setAssetForm(p => ({ ...p, sell_fee_rate: e.target.value }))}
-                placeholder="예: 0.000150"
-              />
+              <label style={labelStyle}>매도 수수료율 (%)</label>
+              <div style={rateWrapStyle}>
+                <input
+                  type="number"
+                  step="0.001"
+                  style={rateInputStyle}
+                  value={sellFeeDisplay}
+                  onChange={e => setSellFeeDisplay(e.target.value)}
+                  placeholder="예: 0.015"
+                />
+                <span style={rateSuffixStyle}>%</span>
+              </div>
             </div>
+
+            {/* 증권거래세율 */}
             <div>
-              <label style={labelStyle}>증권거래세율</label>
-              <input
-                type="number"
-                step="0.000001"
-                style={inputStyle}
-                value={assetForm.tax_rate}
-                onChange={e => setAssetForm(p => ({ ...p, tax_rate: e.target.value }))}
-                placeholder="예: 0.001800"
-              />
+              <label style={labelStyle}>증권거래세율 (%)</label>
+              <div style={rateWrapStyle}>
+                <input
+                  type="number"
+                  step="0.001"
+                  style={rateInputStyle}
+                  value={taxDisplay}
+                  onChange={e => setTaxDisplay(e.target.value)}
+                  placeholder="예: 0.18"
+                />
+                <span style={rateSuffixStyle}>%</span>
+              </div>
             </div>
+
           </div>
 
           <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <button style={btnPrimary} onClick={handleAssetSave} disabled={assetSaving}>
-              <Save size={15} />
-              {assetSaving ? '저장 중...' : '저장'}
+              {assetSaving
+                ? <><RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} /> 재계산 중...</>
+                : <><Save size={15} /> 저장 및 수수료 재계산</>
+              }
             </button>
             {assetMsg && (
-              <span style={{ fontSize: 13, color: assetMsg.type === 'ok' ? '#16a34a' : '#dc2626' }}>
+              <span style={{
+                fontSize: isMobile ? '14px' : '13px',
+                color: assetMsg.type === 'ok' ? '#16a34a'
+                     : assetMsg.type === 'info' ? '#2563eb'
+                     : '#dc2626',
+                fontWeight: 500,
+              }}>
                 {assetMsg.text}
               </span>
             )}
+          </div>
+
+          {/* 재계산 설명 */}
+          <div style={{
+            marginTop: 12,
+            fontSize: isMobile ? '13px' : '12px',
+            color: '#94a3b8',
+            lineHeight: 1.5,
+          }}>
+            ※ 저장 시 이미 입력된 모든 완료 거래의 수수료·세금·순수익이 새 요율로 자동 재계산됩니다.
           </div>
         </div>
 
@@ -300,12 +491,7 @@ export default function Settings() {
         </div>
         <div style={cardStyle}>
           {/* 카테고리 탭 */}
-          <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 6,
-            marginBottom: 16,
-          }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
             {CATEGORIES.map(cat => (
               <button
                 key={cat.key}
@@ -315,7 +501,7 @@ export default function Settings() {
                   borderRadius: 20,
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: 13,
+                  fontSize: isMobile ? '14px' : '13px',
                   fontWeight: activeTab === cat.key ? 700 : 400,
                   background: activeTab === cat.key ? '#2563eb' : '#f1f5f9',
                   color: activeTab === cat.key ? '#fff' : '#475569',
@@ -329,11 +515,11 @@ export default function Settings() {
 
           {/* 현재 카테고리 항목 목록 */}
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8 }}>
+            <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#64748b', marginBottom: 8 }}>
               📋 {currentCatLabel} 항목 ({(options[activeTab] || []).length}개)
             </div>
             {(options[activeTab] || []).length === 0 ? (
-              <div style={{ color: '#94a3b8', fontSize: 13, padding: '8px 0' }}>
+              <div style={{ color: '#94a3b8', fontSize: isMobile ? '14px' : '13px', padding: '8px 0' }}>
                 등록된 항목이 없습니다.
               </div>
             ) : (
@@ -348,7 +534,7 @@ export default function Settings() {
                     borderRadius: 8,
                     padding: '8px 12px',
                   }}>
-                    <span style={{ fontSize: 14, color: '#1e293b' }}>{opt.label}</span>
+                    <span style={{ fontSize: isMobile ? '15px' : '14px', color: '#1e293b' }}>{opt.label}</span>
                     <button
                       style={btnDanger}
                       onClick={() => handleDeleteOption(opt.id)}
@@ -383,13 +569,18 @@ export default function Settings() {
             </button>
           </div>
           {optMsg && (
-            <div style={{ marginTop: 8, fontSize: 13, color: optMsg.type === 'ok' ? '#16a34a' : '#dc2626' }}>
+            <div style={{ marginTop: 8, fontSize: isMobile ? '14px' : '13px', color: optMsg.type === 'ok' ? '#16a34a' : '#dc2626' }}>
               {optMsg.text}
             </div>
           )}
         </div>
 
       </div>
+
+      {/* 스피너 애니메이션 */}
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 }
