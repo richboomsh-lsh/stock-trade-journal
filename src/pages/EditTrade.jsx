@@ -29,13 +29,37 @@ function useIsMobile() {
   return isMobile
 }
 
+// ─── SectionBox ───────────────────────────────────────────────────────────────
+function SectionBox({ children }) {
+  return (
+    <div style={{
+      background: '#f8fafc',
+      border: '1px solid #e9eef5',
+      borderRadius: '10px',
+      padding: '14px 16px',
+      marginTop: '4px',
+    }}>
+      {children}
+    </div>
+  )
+}
+
 function Section({ title, children, isMobile }) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', marginBottom: '16px' }}>
+    <div style={{
+      background: '#fff',
+      border: '1px solid #e2e8f0',
+      borderRadius: '12px',
+      padding: '20px',
+      marginBottom: '16px',
+    }}>
       <h3 style={{
         fontSize: isMobile ? '16px' : '14px',
-        fontWeight: 700, color: '#64748b', marginBottom: '16px',
-        textTransform: 'uppercase', letterSpacing: '0.05em',
+        fontWeight: 700,
+        color: '#64748b',
+        marginBottom: '16px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
       }}>
         {title}
       </h3>
@@ -46,7 +70,12 @@ function Section({ title, children, isMobile }) {
 
 function Row({ children, cols = 2 }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '12px', marginBottom: '12px' }}>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: `repeat(${cols}, 1fr)`,
+      gap: '12px',
+      marginBottom: '12px',
+    }}>
       {children}
     </div>
   )
@@ -63,8 +92,10 @@ function TagSelector({ options, selected, onChange, color = '#2563eb', isMobile 
         const active = selected.includes(opt)
         return (
           <button key={opt} type="button" onClick={() => toggle(opt)} style={{
-            padding: '4px 12px', borderRadius: '20px',
-            fontSize: isMobile ? '16px' : '14px', cursor: 'pointer',
+            padding: '4px 12px',
+            borderRadius: '20px',
+            fontSize: isMobile ? '16px' : '14px',
+            cursor: 'pointer',
             background: active ? color + '15' : '#f8fafc',
             color: active ? color : '#64748b',
             border: `1px solid ${active ? color + '60' : '#e2e8f0'}`,
@@ -74,6 +105,19 @@ function TagSelector({ options, selected, onChange, color = '#2563eb', isMobile 
       })}
     </div>
   )
+}
+
+// ─── 천단위 콤마 유틸 ──────────────────────────────────────────────────────────
+function toComma(val) {
+  if (val === '' || val === null || val === undefined) return ''
+  const num = String(val).replace(/[^0-9]/g, '')
+  if (num === '') return ''
+  return Number(num).toLocaleString()
+}
+
+function fromComma(val) {
+  if (val === '' || val === null || val === undefined) return ''
+  return String(val).replace(/[^0-9]/g, '')
 }
 
 export default function EditTrade() {
@@ -94,6 +138,15 @@ export default function EditTrade() {
   const [market, setMarket] = useState('')
   const [feeSettings, setFeeSettings] = useState({ buy_fee_rate: 0.015, sell_fee_rate: 0.015, tax_rate: 0.2 })
 
+  // ─── 천단위 콤마 숫자 state ──────────────────────────────────────────────────
+  const [buyPriceRaw, setBuyPriceRaw] = useState('')   // 실제 숫자 문자열 (콤마 없음)
+  const [sellPriceRaw, setSellPriceRaw] = useState('')
+  const [quantityRaw, setQuantityRaw] = useState('')
+
+  const [buyPriceDisplay, setBuyPriceDisplay] = useState('')   // 화면에 보이는 콤마 포함 값
+  const [sellPriceDisplay, setSellPriceDisplay] = useState('')
+  const [quantityDisplay, setQuantityDisplay] = useState('')
+
   const [existingImages, setExistingImages] = useState([])
   const [existingUrls, setExistingUrls] = useState([])
   const [removedImages, setRemovedImages] = useState([])
@@ -102,44 +155,60 @@ export default function EditTrade() {
   const [uploadProgress, setUploadProgress] = useState(false)
   const [pasteHint, setPasteHint] = useState(false)
 
-  // 반응형 인라인 스타일
+  // ─── 스타일 ────────────────────────────────────────────────────────────────
   const inputStyle = {
-    width: '100%', padding: '8px 12px', border: '1px solid #d1d5db',
-    borderRadius: '8px', fontSize: isMobile ? '16px' : '14px',
-    boxSizing: 'border-box', background: '#fff',
+    width: '100%',
+    padding: '8px 12px',
+    border: '1.5px solid #d1d5db',
+    borderRadius: '8px',
+    fontSize: isMobile ? '16px' : '14px',
+    boxSizing: 'border-box',
+    background: '#fff',
   }
   const textareaStyle = {
-    ...inputStyle, resize: 'vertical', minHeight: '80px', lineHeight: '1.6', fontFamily: 'inherit',
+    ...inputStyle,
+    resize: 'vertical',
+    minHeight: '80px',
+    lineHeight: '1.6',
+    fontFamily: 'inherit',
   }
 
-  // label 렌더 함수 (isMobile 클로저 캡처)
   const labelEl = (text, required) => (
-    <label style={{ display: 'block', fontSize: isMobile ? '16px' : '14px', fontWeight: 600, color: '#374151', marginBottom: '5px' }}>
+    <label style={{
+      display: 'block',
+      fontSize: isMobile ? '16px' : '14px',
+      fontWeight: 600,
+      color: '#1e293b',
+      marginBottom: '5px',
+    }}>
       {text}{required && <span style={{ color: '#dc2626' }}> *</span>}
     </label>
   )
 
-  const buyPrice = watch('buy_price')
-  const sellPrice = watch('sell_price')
-  const quantity = watch('quantity')
+  // ─── watch는 날짜·position_size 등 나머지 필드에만 사용 ──────────────────────
   const buyDate = watch('buy_date')
   const sellDate = watch('sell_date')
 
-  const profitAmount = buyPrice && sellPrice && quantity
-    ? calcProfitAmount(Number(buyPrice), Number(sellPrice), Number(quantity)) : null
-  const profitRate = buyPrice && sellPrice
-    ? calcProfitRate(Number(buyPrice), Number(sellPrice)) : null
+  // 숫자 계산은 raw state 기준
+  const buyPrice = buyPriceRaw !== '' ? Number(buyPriceRaw) : null
+  const sellPrice = sellPriceRaw !== '' ? Number(sellPriceRaw) : null
+  const quantity = quantityRaw !== '' ? Number(quantityRaw) : null
+
+  const profitAmount = (buyPrice !== null && sellPrice !== null && quantity !== null)
+    ? calcProfitAmount(buyPrice, sellPrice, quantity) : null
+  const profitRate = (buyPrice !== null && sellPrice !== null)
+    ? calcProfitRate(buyPrice, sellPrice) : null
   const holdingDays = buyDate && sellDate
     ? calcHoldingDays(buyDate, sellDate) : null
 
-  const fee = (buyPrice && sellPrice && quantity)
+  const fee = (buyPrice !== null && sellPrice !== null && quantity !== null)
     ? Math.round(
-        Number(buyPrice) * Number(quantity) * (feeSettings.buy_fee_rate / 100) +
-        Number(sellPrice) * Number(quantity) * (feeSettings.sell_fee_rate / 100)
+        buyPrice * quantity * (feeSettings.buy_fee_rate / 100) +
+        sellPrice * quantity * (feeSettings.sell_fee_rate / 100)
       )
     : null
 
-  const tax = (sellPrice && quantity && profitAmount !== null && profitAmount > 0)
+  const tax = (sellPrice !== null && quantity !== null && profitAmount !== null && profitAmount > 0)
     ? Math.round(profitAmount * (feeSettings.tax_rate / 100))
     : null
 
@@ -147,9 +216,16 @@ export default function EditTrade() {
     ? profitAmount - fee - (tax || 0)
     : null
 
-  const netProfitRate = (netProfitAmount !== null && buyPrice && quantity)
-    ? (netProfitAmount / (Number(buyPrice) * Number(quantity))) * 100
+  const netProfitRate = (netProfitAmount !== null && buyPrice !== null && quantity !== null)
+    ? (netProfitAmount / (buyPrice * quantity)) * 100
     : null
+
+  // ─── 천단위 input 핸들러 ────────────────────────────────────────────────────
+  const handleNumInput = (rawSetter, displaySetter) => (e) => {
+    const digits = fromComma(e.target.value)
+    rawSetter(digits)
+    displaySetter(digits === '' ? '' : Number(digits).toLocaleString())
+  }
 
   useEffect(() => {
     loadOptions()
@@ -166,13 +242,6 @@ export default function EditTrade() {
     if (error || !data) return
 
     const grouped = { ...DEFAULT_OPTIONS }
-    data.forEach(row => {
-      if (!grouped[row.category]) grouped[row.category] = []
-      if (!grouped[row.category].includes(row.label)) {
-        grouped[row.category] = [...grouped[row.category], row.label]
-      }
-    })
-
     const categories = [...new Set(data.map(r => r.category))]
     categories.forEach(cat => {
       grouped[cat] = data.filter(r => r.category === cat).map(r => r.label)
@@ -208,13 +277,30 @@ export default function EditTrade() {
     }
 
     const fields = [
-      'stock_name', 'buy_date', 'buy_price', 'sell_date', 'sell_price',
-      'quantity', 'position_size', 'sector', 'trade_style', 'market_condition',
+      'stock_name', 'buy_date', 'sell_date',
+      'position_size', 'sector', 'trade_style', 'market_condition',
       'trade_grade', 'sell_reason',
       'material_context', 'entry_reason', 'stop_loss_plan', 'trade_log',
       'reflection_good', 'reflection_bad', 'reflection_next',
     ]
     fields.forEach(f => setValue(f, data[f] || ''))
+
+    // 숫자 필드는 state로 세팅
+    if (data.buy_price) {
+      const v = String(Math.round(data.buy_price))
+      setBuyPriceRaw(v)
+      setBuyPriceDisplay(Number(v).toLocaleString())
+    }
+    if (data.sell_price) {
+      const v = String(Math.round(data.sell_price))
+      setSellPriceRaw(v)
+      setSellPriceDisplay(Number(v).toLocaleString())
+    }
+    if (data.quantity) {
+      const v = String(data.quantity)
+      setQuantityRaw(v)
+      setQuantityDisplay(Number(v).toLocaleString())
+    }
 
     setMarket(data.market || '')
     setThemes(data.themes || [])
@@ -286,6 +372,8 @@ export default function EditTrade() {
   }
 
   const onSubmit = async (formData) => {
+    if (!buyPriceRaw) { alert('매수가를 입력해주세요.'); return }
+
     setSaving(true)
     setUploadProgress(true)
 
@@ -308,22 +396,46 @@ export default function EditTrade() {
         .map(i => formData[`news_link_${i}`])
         .filter(l => l && l.trim())
 
+      const bPrice = buyPrice !== null ? buyPrice : null
+      const sPrice = sellPrice !== null ? sellPrice : null
+      const qty = quantity !== null ? quantity : null
+
+      const pAmount = (bPrice && sPrice && qty) ? calcProfitAmount(bPrice, sPrice, qty) : null
+      const pRate = (bPrice && sPrice) ? calcProfitRate(bPrice, sPrice) : null
+      const hDays = buyDate && sellDate ? calcHoldingDays(buyDate, sellDate) : null
+
+      const calcFee = (bPrice && sPrice && qty)
+        ? Math.round(
+            bPrice * qty * (feeSettings.buy_fee_rate / 100) +
+            sPrice * qty * (feeSettings.sell_fee_rate / 100)
+          )
+        : null
+      const calcTax = (sPrice && qty && pAmount !== null && pAmount > 0)
+        ? Math.round(pAmount * (feeSettings.tax_rate / 100))
+        : null
+      const calcNet = (pAmount !== null && calcFee !== null)
+        ? pAmount - calcFee - (calcTax || 0)
+        : null
+      const calcNetRate = (calcNet !== null && bPrice && qty)
+        ? (calcNet / (bPrice * qty)) * 100
+        : null
+
       const payload = {
         stock_name: formData.stock_name,
         market: market || null,
         buy_date: formData.buy_date,
-        buy_price: Number(formData.buy_price),
+        buy_price: bPrice,
         sell_date: formData.sell_date || null,
-        sell_price: formData.sell_price ? Number(formData.sell_price) : null,
-        quantity: formData.quantity ? Number(formData.quantity) : null,
+        sell_price: sPrice,
+        quantity: qty,
         position_size: formData.position_size ? Number(formData.position_size) : null,
-        profit_amount: profitAmount,
-        profit_rate: profitRate,
-        holding_days: holdingDays,
-        fee: fee,
-        tax: tax,
-        net_profit_amount: netProfitAmount !== null ? Math.round(netProfitAmount) : null,
-        net_profit_rate: netProfitRate !== null ? parseFloat(netProfitRate.toFixed(4)) : null,
+        profit_amount: pAmount,
+        profit_rate: pRate,
+        holding_days: hDays,
+        fee: calcFee,
+        tax: calcTax,
+        net_profit_amount: calcNet !== null ? Math.round(calcNet) : null,
+        net_profit_rate: calcNetRate !== null ? parseFloat(calcNetRate.toFixed(4)) : null,
         sector: formData.sector || null,
         themes: themes.length > 0 ? themes : null,
         trade_style: formData.trade_style || null,
@@ -364,6 +476,15 @@ export default function EditTrade() {
 
   return (
     <div>
+      {/* 포커스 스타일 주입 */}
+      <style>{`
+        .et-input:focus {
+          outline: none;
+          border-color: #2563eb !important;
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+        }
+      `}</style>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
         <button onClick={() => navigate(-1)} style={{
           padding: '6px 12px', background: '#fff', border: '1px solid #e2e8f0',
@@ -443,174 +564,292 @@ export default function EditTrade() {
           </div>
         )}
 
-        {/* 기본 거래 정보 */}
+        {/* ── 기본 거래 정보 ─────────────────────────────────── */}
         <Section title="기본 거래 정보" isMobile={isMobile}>
+
+          {/* 종목명 */}
           <div style={{ marginBottom: '12px' }}>
             {labelEl('종목명', true)}
-            <input {...register('stock_name', { required: '종목명을 입력해주세요' })}
-              style={{ ...inputStyle, borderColor: errors.stock_name ? '#dc2626' : '#d1d5db' }}
-              placeholder="예: 삼성전자" />
-            {errors.stock_name && <p style={{ color: '#dc2626', fontSize: isMobile ? '16px' : '14px', marginTop: '4px' }}>{errors.stock_name.message}</p>}
+            <SectionBox>
+              <input
+                {...register('stock_name', { required: '종목명을 입력해주세요' })}
+                className="et-input"
+                style={{ ...inputStyle, borderColor: errors.stock_name ? '#dc2626' : '#d1d5db' }}
+                placeholder="예: 삼성전자"
+              />
+              {errors.stock_name && (
+                <p style={{ color: '#dc2626', fontSize: isMobile ? '16px' : '14px', marginTop: '4px' }}>
+                  {errors.stock_name.message}
+                </p>
+              )}
+            </SectionBox>
           </div>
 
           {/* 시장 구분 */}
           <div style={{ marginBottom: '12px' }}>
             {labelEl('시장 구분')}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {['코스피', '코스닥'].map(m => (
-                <button key={m} type="button" onClick={() => setMarket(market === m ? '' : m)} style={{
-                  padding: '7px 20px', borderRadius: '8px',
-                  fontSize: isMobile ? '16px' : '14px', cursor: 'pointer',
-                  fontWeight: market === m ? 700 : 400,
-                  background: market === m ? '#1e293b' : '#f8fafc',
-                  color: market === m ? '#fff' : '#64748b',
-                  border: `1px solid ${market === m ? '#1e293b' : '#e2e8f0'}`,
-                  transition: 'all 0.15s',
-                }}>{m}</button>
-              ))}
-            </div>
+            <SectionBox>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {['코스피', '코스닥'].map(m => (
+                  <button key={m} type="button" onClick={() => setMarket(market === m ? '' : m)} style={{
+                    padding: '7px 20px', borderRadius: '8px',
+                    fontSize: isMobile ? '16px' : '14px', cursor: 'pointer',
+                    fontWeight: market === m ? 700 : 400,
+                    background: market === m
+                      ? (m === '코스피' ? '#2563eb' : '#7c3aed')
+                      : '#f8fafc',
+                    color: market === m ? '#fff' : '#64748b',
+                    border: `1px solid ${market === m
+                      ? (m === '코스피' ? '#2563eb' : '#7c3aed')
+                      : '#e2e8f0'}`,
+                    transition: 'all 0.15s',
+                  }}>{m}</button>
+                ))}
+              </div>
+            </SectionBox>
           </div>
 
+          {/* 날짜 / 가격 */}
           <Row>
             <div>
               {labelEl('매수일', true)}
-              <input type="date" {...register('buy_date', { required: true })} style={inputStyle} />
+              <SectionBox>
+                <input
+                  type="date"
+                  {...register('buy_date', { required: true })}
+                  className="et-input"
+                  style={inputStyle}
+                />
+              </SectionBox>
             </div>
             <div>
               {labelEl('매수가 (원)', true)}
-              <input type="number" {...register('buy_price', { required: true })} style={inputStyle} placeholder="0" />
+              <SectionBox>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="et-input"
+                  style={inputStyle}
+                  value={buyPriceDisplay}
+                  onChange={handleNumInput(setBuyPriceRaw, setBuyPriceDisplay)}
+                  placeholder="0"
+                />
+              </SectionBox>
             </div>
           </Row>
+
           <Row>
             <div>
               {labelEl('매도일')}
-              <input type="date" {...register('sell_date')} style={inputStyle} />
+              <SectionBox>
+                <input
+                  type="date"
+                  {...register('sell_date')}
+                  className="et-input"
+                  style={inputStyle}
+                />
+              </SectionBox>
             </div>
             <div>
               {labelEl('매도가 (원)')}
-              <input type="number" {...register('sell_price')} style={inputStyle} placeholder="0" />
+              <SectionBox>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="et-input"
+                  style={inputStyle}
+                  value={sellPriceDisplay}
+                  onChange={handleNumInput(setSellPriceRaw, setSellPriceDisplay)}
+                  placeholder="0"
+                />
+              </SectionBox>
             </div>
           </Row>
+
           <Row>
             <div>
               {labelEl('수량 (주)')}
-              <input type="number" {...register('quantity')} style={inputStyle} placeholder="0" />
+              <SectionBox>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="et-input"
+                  style={inputStyle}
+                  value={quantityDisplay}
+                  onChange={handleNumInput(setQuantityRaw, setQuantityDisplay)}
+                  placeholder="0"
+                />
+              </SectionBox>
             </div>
             <div>
               {labelEl('포지션 비중 (%)')}
-              <input type="number" {...register('position_size')} style={inputStyle} placeholder="0~100" min="0" max="100" />
+              <SectionBox>
+                <input
+                  type="number"
+                  {...register('position_size')}
+                  className="et-input"
+                  style={inputStyle}
+                  placeholder="0~100"
+                  min="0"
+                  max="100"
+                />
+              </SectionBox>
             </div>
           </Row>
         </Section>
 
-        {/* 분류 정보 */}
+        {/* ── 분류 정보 ──────────────────────────────────────── */}
         <Section title="분류 정보" isMobile={isMobile}>
           <Row>
             <div>
               {labelEl('섹터')}
-              <select {...register('sector')} style={inputStyle}>
-                <option value="">선택</option>
-                {options.sector.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <SectionBox>
+                <select {...register('sector')} className="et-input" style={inputStyle}>
+                  <option value="">선택</option>
+                  {options.sector.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </SectionBox>
             </div>
             <div>
               {labelEl('매매방식')}
-              <select {...register('trade_style')} style={inputStyle}>
-                <option value="">선택</option>
-                {options.trade_style.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <SectionBox>
+                <select {...register('trade_style')} className="et-input" style={inputStyle}>
+                  <option value="">선택</option>
+                  {options.trade_style.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </SectionBox>
             </div>
           </Row>
+
           <div style={{ marginBottom: '12px' }}>
             {labelEl('시장상황')}
-            <select {...register('market_condition')} style={inputStyle}>
-              <option value="">선택</option>
-              {options.market_condition.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <SectionBox>
+              <select {...register('market_condition')} className="et-input" style={inputStyle}>
+                <option value="">선택</option>
+                {options.market_condition.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </SectionBox>
           </div>
+
           <div>
             {labelEl('테마 (복수 선택 가능)')}
-            <TagSelector options={options.theme} selected={themes} onChange={setThemes} color="#7c3aed" isMobile={isMobile} />
+            <SectionBox>
+              <TagSelector options={options.theme} selected={themes} onChange={setThemes} color="#7c3aed" isMobile={isMobile} />
+            </SectionBox>
           </div>
         </Section>
 
-        {/* 정성 평가 */}
+        {/* ── 정성 평가 ──────────────────────────────────────── */}
         <Section title="정성 평가" isMobile={isMobile}>
           <Row cols={2}>
             <div>
               {labelEl('매매등급')}
-              <select {...register('trade_grade')} style={inputStyle}>
-                <option value="">선택</option>
-                {GRADES.map(g => <option key={g} value={g}>등급 {g}</option>)}
-              </select>
+              <SectionBox>
+                <select {...register('trade_grade')} className="et-input" style={inputStyle}>
+                  <option value="">선택</option>
+                  {GRADES.map(g => <option key={g} value={g}>등급 {g}</option>)}
+                </select>
+              </SectionBox>
             </div>
             <div>
               {labelEl('매도이유')}
-              <select {...register('sell_reason')} style={inputStyle}>
-                <option value="">선택</option>
-                {options.sell_reason.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
+              <SectionBox>
+                <select {...register('sell_reason')} className="et-input" style={inputStyle}>
+                  <option value="">선택</option>
+                  {options.sell_reason.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </SectionBox>
             </div>
           </Row>
 
           <div style={{ marginBottom: '12px' }}>
             {labelEl('매수 전 감정 (복수 선택 가능)')}
-            <TagSelector options={options.emotion_before} selected={emotionBefore} onChange={setEmotionBefore} color="#f59e0b" isMobile={isMobile} />
+            <SectionBox>
+              <TagSelector options={options.emotion_before} selected={emotionBefore} onChange={setEmotionBefore} color="#f59e0b" isMobile={isMobile} />
+            </SectionBox>
           </div>
 
           <div style={{ marginBottom: '12px' }}>
             {labelEl('매도 후 감정 (복수 선택 가능)')}
-            <TagSelector options={options.emotion_after} selected={emotionAfter} onChange={setEmotionAfter} color="#8b5cf6" isMobile={isMobile} />
+            <SectionBox>
+              <TagSelector options={options.emotion_after} selected={emotionAfter} onChange={setEmotionAfter} color="#8b5cf6" isMobile={isMobile} />
+            </SectionBox>
           </div>
 
           <div style={{ marginBottom: '12px' }}>
             {labelEl('매수 실수 (복수 선택 가능)')}
-            <TagSelector options={options.mistake_buy} selected={mistakeBuy} onChange={setMistakeBuy} color="#dc2626" isMobile={isMobile} />
+            <SectionBox>
+              <TagSelector options={options.mistake_buy} selected={mistakeBuy} onChange={setMistakeBuy} color="#dc2626" isMobile={isMobile} />
+            </SectionBox>
           </div>
 
           <div>
             {labelEl('매도 실수 (복수 선택 가능)')}
-            <TagSelector options={options.mistake_sell} selected={mistakeSell} onChange={setMistakeSell} color="#ea580c" isMobile={isMobile} />
+            <SectionBox>
+              <TagSelector options={options.mistake_sell} selected={mistakeSell} onChange={setMistakeSell} color="#ea580c" isMobile={isMobile} />
+            </SectionBox>
           </div>
         </Section>
 
-        {/* 매매 근거 */}
+        {/* ── 매매 근거 ──────────────────────────────────────── */}
         <Section title="매매 근거" isMobile={isMobile}>
           <div style={{ marginBottom: '12px' }}>
             {labelEl('재료 및 시장상황')}
-            <textarea {...register('material_context')} style={textareaStyle} placeholder="어떤 재료(뉴스/공시/테마)로 진입했는지 기록하세요" />
+            <SectionBox>
+              <textarea {...register('material_context')} className="et-input" style={textareaStyle}
+                placeholder="어떤 재료(뉴스/공시/테마)로 진입했는지 기록하세요" />
+            </SectionBox>
           </div>
           <div style={{ marginBottom: '12px' }}>
             {labelEl('진입근거')}
-            <textarea {...register('entry_reason')} style={textareaStyle} placeholder="기술적/재료적 진입 근거를 기록하세요" />
+            <SectionBox>
+              <textarea {...register('entry_reason')} className="et-input" style={textareaStyle}
+                placeholder="기술적/재료적 진입 근거를 기록하세요" />
+            </SectionBox>
           </div>
           <div style={{ marginBottom: '12px' }}>
             {labelEl('손절선 사전 설정')}
-            <textarea {...register('stop_loss_plan')} style={{ ...textareaStyle, minHeight: '60px' }} placeholder="진입 전 설정한 손절가/손절 조건" />
+            <SectionBox>
+              <textarea {...register('stop_loss_plan')} className="et-input"
+                style={{ ...textareaStyle, minHeight: '60px' }}
+                placeholder="진입 전 설정한 손절가/손절 조건" />
+            </SectionBox>
           </div>
           <div>
             {labelEl('대응 기록')}
-            <textarea {...register('trade_log')} style={textareaStyle} placeholder="매매 중 어떻게 대응했는지 기록하세요" />
+            <SectionBox>
+              <textarea {...register('trade_log')} className="et-input" style={textareaStyle}
+                placeholder="매매 중 어떻게 대응했는지 기록하세요" />
+            </SectionBox>
           </div>
         </Section>
 
-        {/* 성찰 */}
+        {/* ── 성찰 ───────────────────────────────────────────── */}
         <Section title="성찰" isMobile={isMobile}>
           <div style={{ marginBottom: '12px' }}>
             {labelEl('✅ 잘한 점')}
-            <textarea {...register('reflection_good')} style={textareaStyle} placeholder="이번 매매에서 잘한 점은?" />
+            <SectionBox>
+              <textarea {...register('reflection_good')} className="et-input" style={textareaStyle}
+                placeholder="이번 매매에서 잘한 점은?" />
+            </SectionBox>
           </div>
           <div style={{ marginBottom: '12px' }}>
             {labelEl('❌ 아쉬운 점')}
-            <textarea {...register('reflection_bad')} style={textareaStyle} placeholder="아쉬웠던 점, 실수한 점은?" />
+            <SectionBox>
+              <textarea {...register('reflection_bad')} className="et-input" style={textareaStyle}
+                placeholder="아쉬웠던 점, 실수한 점은?" />
+            </SectionBox>
           </div>
           <div>
             {labelEl('💡 다음에는')}
-            <textarea {...register('reflection_next')} style={textareaStyle} placeholder="다음 번에 어떻게 개선할 것인지?" />
+            <SectionBox>
+              <textarea {...register('reflection_next')} className="et-input" style={textareaStyle}
+                placeholder="다음 번에 어떻게 개선할 것인지?" />
+            </SectionBox>
           </div>
         </Section>
 
-        {/* 차트 이미지 */}
+        {/* ── 차트 이미지 ────────────────────────────────────── */}
         <Section title="차트 이미지" isMobile={isMobile}>
           {existingUrls.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
@@ -686,17 +925,24 @@ export default function EditTrade() {
           </div>
         </Section>
 
-        {/* 뉴스 링크 */}
+        {/* ── 뉴스 링크 ──────────────────────────────────────── */}
         <Section title="뉴스 / 공시 링크" isMobile={isMobile}>
           {[0, 1, 2].map(i => (
             <div key={i} style={{ marginBottom: '8px' }}>
-              <input {...register(`news_link_${i}`)} style={inputStyle}
-                placeholder={`링크 ${i + 1} (https://...)`} type="url" />
+              <SectionBox>
+                <input
+                  {...register(`news_link_${i}`)}
+                  className="et-input"
+                  style={inputStyle}
+                  placeholder={`링크 ${i + 1} (https://...)`}
+                  type="url"
+                />
+              </SectionBox>
             </div>
           ))}
         </Section>
 
-        {/* 저장 버튼 */}
+        {/* ── 저장 버튼 ──────────────────────────────────────── */}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
           <button type="button" onClick={() => navigate(-1)} style={{
             padding: '10px 24px', background: '#fff', border: '1px solid #d1d5db',

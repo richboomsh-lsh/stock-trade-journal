@@ -13,12 +13,70 @@ function useIsMobile() {
   return isMobile
 }
 
-function Field({ label, value, color, isMobile }) {
+/* ───────────── 마크다운 렌더링 ───────────── */
+function parseInline(text, keyPrefix) {
+  const pattern = /(\*\*(.+?)\*\*|==(?:(red|blue|green):)?(.+?)==)/g
+  const parts = []
+  let lastIndex = 0
+  let match
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index))
+    }
+    if (match[0].startsWith('**')) {
+      parts.push(
+        <strong key={`${keyPrefix}-b-${match.index}`} style={{ fontWeight: 700 }}>
+          {match[2]}
+        </strong>
+      )
+    } else {
+      const colorKey = match[3]
+      const content  = match[4]
+      const styles = {
+        red:   { bg: '#fee2e2', fg: '#dc2626' },
+        blue:  { bg: '#dbeafe', fg: '#2563eb' },
+        green: { bg: '#dcfce7', fg: '#16a34a' },
+      }
+      const s = colorKey ? styles[colorKey] : { bg: '#ffedd5', fg: '#ea580c' }
+      parts.push(
+        <mark key={`${keyPrefix}-m-${match.index}`} style={{
+          background: s.bg, color: s.fg,
+          borderRadius: '3px', padding: '0 3px',
+        }}>{content}</mark>
+      )
+    }
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex))
+  return parts
+}
+
+function renderMarkdown(text) {
+  if (!text) return null
+  return text.split('\n').map((line, i, arr) => (
+    <span key={i}>
+      {parseInline(line, String(i))}
+      {i < arr.length - 1 && <br />}
+    </span>
+  ))
+}
+/* ─────────────────────────────────────────── */
+
+function Field({ label, value, color, isMobile, markdown }) {
   if (value === null || value === undefined || value === '') return null
   return (
     <div style={{ marginBottom: '12px' }}>
       <div style={{ fontSize: isMobile ? '14px' : '14px', color: '#94a3b8', marginBottom: '3px' }}>{label}</div>
-      <div style={{ fontSize: isMobile ? '16px' : '14px', color: color || '#1e293b', lineHeight: '1.6' }}>{value}</div>
+      <div style={{
+        fontSize: isMobile ? '16px' : '14px',
+        color: color || '#1e293b',
+        lineHeight: '1.6',
+        textAlign: 'left',
+        whiteSpace: markdown ? 'normal' : 'pre-wrap',
+      }}>
+        {markdown ? renderMarkdown(value) : value}
+      </div>
     </div>
   )
 }
@@ -451,10 +509,10 @@ export default function TradeDetail() {
         <div>
           {(trade.material_context || trade.entry_reason || trade.stop_loss_plan || trade.trade_log) && (
             <Section title="매매 근거" isMobile={isMobile}>
-              <Field label="재료 및 시장상황" value={trade.material_context} isMobile={isMobile} />
-              <Field label="진입근거"         value={trade.entry_reason} isMobile={isMobile} />
-              <Field label="손절선 설정"      value={trade.stop_loss_plan} isMobile={isMobile} />
-              <Field label="대응 기록"        value={trade.trade_log} isMobile={isMobile} />
+              <Field label="재료 및 시장상황" value={trade.material_context} isMobile={isMobile} markdown />
+              <Field label="진입근거"         value={trade.entry_reason}     isMobile={isMobile} markdown />
+              <Field label="손절선 설정"      value={trade.stop_loss_plan}   isMobile={isMobile} markdown />
+              <Field label="대응 기록"        value={trade.trade_log}        isMobile={isMobile} markdown />
             </Section>
           )}
 
@@ -463,19 +521,25 @@ export default function TradeDetail() {
               {trade.reflection_good && (
                 <div style={{ marginBottom: '14px' }}>
                   <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#16a34a', marginBottom: '4px', fontWeight: 600 }}>✅ 잘한 점</div>
-                  <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#1e293b', lineHeight: '1.6' }}>{trade.reflection_good}</div>
+                  <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#1e293b', lineHeight: '1.6', textAlign: 'left' }}>
+                    {renderMarkdown(trade.reflection_good)}
+                  </div>
                 </div>
               )}
               {trade.reflection_bad && (
                 <div style={{ marginBottom: '14px' }}>
                   <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#dc2626', marginBottom: '4px', fontWeight: 600 }}>❌ 아쉬운 점</div>
-                  <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#1e293b', lineHeight: '1.6' }}>{trade.reflection_bad}</div>
+                  <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#1e293b', lineHeight: '1.6', textAlign: 'left' }}>
+                    {renderMarkdown(trade.reflection_bad)}
+                  </div>
                 </div>
               )}
               {trade.reflection_next && (
                 <div>
                   <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#2563eb', marginBottom: '4px', fontWeight: 600 }}>💡 다음에는</div>
-                  <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#1e293b', lineHeight: '1.6' }}>{trade.reflection_next}</div>
+                  <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#1e293b', lineHeight: '1.6', textAlign: 'left' }}>
+                    {renderMarkdown(trade.reflection_next)}
+                  </div>
                 </div>
               )}
             </Section>
