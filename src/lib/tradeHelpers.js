@@ -21,8 +21,8 @@ export function formatKRW(amount) {
 }
 
 export function getProfitColor(rate) {
-  if (rate > 0) return '#2563eb'
-  if (rate < 0) return '#dc2626'
+  if (rate > 0) return '#dc2626'
+  if (rate < 0) return '#2563eb'
   return '#6b7280'
 }
 
