@@ -90,7 +90,7 @@ export default function TradeJournal() {
         }}>
           {[
             { label: '총 거래', value: `${trades.length}건` },
-            { label: '승률', value: `${winRate}%`, color: winRate >= 50 ? '#2563eb' : '#dc2626' },
+            { label: '승률', value: `${winRate}%`, color: winRate > 0 ? '#dc2626' : '#6b7280' },
             { label: '평균 순수익률', value: `${avgNetProfit >= 0 ? '+' : ''}${avgNetProfit}%`, color: getProfitColor(Number(avgNetProfit)) },
             { label: '완료 거래', value: `${completedTrades.length}건` },
           ].map(card => (
