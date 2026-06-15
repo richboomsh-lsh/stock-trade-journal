@@ -8,6 +8,8 @@ import TradeDetail from './pages/TradeDetail'
 import EditTrade from './pages/EditTrade'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
+import ReviewStart from './pages/ReviewStart'
+import ReviewSession from './pages/ReviewSession'
 
 function Navbar() {
   const location = useLocation()
@@ -48,12 +50,10 @@ function Navbar() {
 }
 
 export default function App() {
-  // 세션에 인증 여부 저장 (브라우저 탭 닫으면 자동 로그아웃)
   const [authenticated, setAuthenticated] = useState(
     () => sessionStorage.getItem('authenticated') === 'true'
   )
 
-  // 로그인 성공 시 호출
   function handleLogin() {
     setAuthenticated(true)
   }
@@ -82,11 +82,9 @@ export default function App() {
         }
       `}</style>
 
-      {/* 인증 전: 로그인 화면만 표시 */}
       {!authenticated ? (
         <Login onLogin={handleLogin} />
       ) : (
-        /* 인증 후: 기존 앱 정상 표시 */
         <Router>
           <div style={{
             minHeight: '100vh',
@@ -104,6 +102,8 @@ export default function App() {
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/trade/:id" element={<TradeDetail />} />
                 <Route path="/edit/:id" element={<EditTrade />} />
+                <Route path="/review" element={<ReviewStart />} />
+                <Route path="/review/session" element={<ReviewSession />} />
               </Routes>
             </main>
           </div>
