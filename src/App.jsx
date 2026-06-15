@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
 import NewTrade from './pages/NewTrade'
@@ -5,7 +6,8 @@ import TradeJournal from './pages/TradeJournal'
 import Stats from './pages/Stats'
 import TradeDetail from './pages/TradeDetail'
 import EditTrade from './pages/EditTrade'
-import Settings from './pages/Settings';
+import Settings from './pages/Settings'
+import Login from './pages/Login'
 
 function Navbar() {
   const location = useLocation()
@@ -46,9 +48,18 @@ function Navbar() {
 }
 
 export default function App() {
+  // 세션에 인증 여부 저장 (브라우저 탭 닫으면 자동 로그아웃)
+  const [authenticated, setAuthenticated] = useState(
+    () => sessionStorage.getItem('authenticated') === 'true'
+  )
+
+  // 로그인 성공 시 호출
+  function handleLogin() {
+    setAuthenticated(true)
+  }
+
   return (
     <>
-      {/* ✅ 가장 확실한 방법: <style> 태그를 React 안에서 직접 삽입 */}
       <style>{`
         input, textarea, select {
           color: #1e293b !important;
@@ -70,27 +81,34 @@ export default function App() {
           -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
         }
       `}</style>
-      <Router>
-        <div style={{
-          minHeight: '100vh',
-          background: '#f8fafc',
-          color: '#1e293b',
-          colorScheme: 'light',
-        }}>
-          <Navbar />
-          <main style={{ maxWidth: '960px', margin: '0 auto', padding: '20px 14px' }}>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/new" element={<NewTrade />} />
-              <Route path="/journal" element={<TradeJournal />} />
-              <Route path="/stats" element={<Stats />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/trade/:id" element={<TradeDetail />} />
-              <Route path="/edit/:id" element={<EditTrade />} />
-            </Routes>
-          </main>
-        </div>
-      </Router>
+
+      {/* 인증 전: 로그인 화면만 표시 */}
+      {!authenticated ? (
+        <Login onLogin={handleLogin} />
+      ) : (
+        /* 인증 후: 기존 앱 정상 표시 */
+        <Router>
+          <div style={{
+            minHeight: '100vh',
+            background: '#f8fafc',
+            color: '#1e293b',
+            colorScheme: 'light',
+          }}>
+            <Navbar />
+            <main style={{ maxWidth: '960px', margin: '0 auto', padding: '20px 14px' }}>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/new" element={<NewTrade />} />
+                <Route path="/journal" element={<TradeJournal />} />
+                <Route path="/stats" element={<Stats />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/trade/:id" element={<TradeDetail />} />
+                <Route path="/edit/:id" element={<EditTrade />} />
+              </Routes>
+            </main>
+          </div>
+        </Router>
+      )}
     </>
   )
 }
