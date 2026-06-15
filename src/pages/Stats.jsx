@@ -294,9 +294,9 @@ export default function Stats() {
       {/* ① 핵심 요약 카드 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '16px' }}>
         <Card label="총 완료 거래" value={`${done.length}건`} sub={`전체 ${trades.length}건`} />
-        <Card label="승률" value={`${winRate}%`} sub={`${wins.length}승 ${losses.length}패`} color={Number(winRate) >= 50 ? '#2563eb' : '#dc2626'} />
-        <Card label="평균 순수익률 (익)" value={`+${avgWin}%`} color="#2563eb" />
-        <Card label="평균 순수익률 (손)" value={`${avgLoss}%`} color="#dc2626" />
+        <Card label="승률" value={`${winRate}%`} sub={`${wins.length}승 ${losses.length}패`} color={Number(winRate) > 0 ? '#dc2626' : '#6b7280'} />
+        <Card label="평균 순수익률 (익)" value={`+${avgWin}%`} color="#dc2626" />
+        <Card label="평균 순수익률 (손)" value={`${avgLoss}%`} color="#2563eb" />
         <Card label="손익비" value={rr === '-' ? '-' : `${rr}`} sub="평균수익 ÷ 평균손실" color={rr !== '-' && Number(rr) >= 1 ? '#16a34a' : '#dc2626'} />
         <Card label="누적 순손익" value={`${totalProfit >= 0 ? '+' : ''}${Math.round(totalProfit / 10000)}만원`} color={getProfitColor(totalProfit)} />
         <Card label="평균 보유기간" value={avgHolding === '-' ? '-' : `${avgHolding}일`} />
