@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2, Save, Settings as SettingsIcon, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -37,18 +37,13 @@ function fromDisplay(str) {
 }
 
 // ── DB 저장값(소수) → 화면 표시값(%) 변환
-//    0.00015  →  "0.015"
-//    0.0018   →  "0.18"
 function rateToDisplay(dbVal) {
   if (dbVal === '' || dbVal === null || dbVal === undefined) return '';
-  // 소수점 6자리까지 반올림해서 부동소수점 오차 제거
   const pct = Math.round(Number(dbVal) * 100 * 1000000) / 1000000;
   return String(pct);
 }
 
 // ── 화면 입력값(%) → DB 저장값(소수) 변환
-//    "0.015"  →  0.00015
-//    "0.18"   →  0.0018
 function rateFromDisplay(str) {
   if (str === '' || str === null) return null;
   const pct = parseFloat(str);
@@ -60,22 +55,28 @@ export default function Settings() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
-  // ── 자산·수수료 상태 (화면 표시용 — % 단위, 총자산은 콤마 포함 문자열)
-  const [totalAssetsDisplay, setTotalAssetsDisplay] = useState(''); // 콤마 포함 문자열
-  const [totalAssetsRaw, setTotalAssetsRaw]         = useState(''); // 순수 숫자 문자열
-  const [buyFeeDisplay, setBuyFeeDisplay]           = useState(''); // % 단위 문자열
-  const [sellFeeDisplay, setSellFeeDisplay]         = useState(''); // % 단위 문자열
-  const [taxDisplay, setTaxDisplay]                 = useState(''); // % 단위 문자열
-
-  const [assetSaving, setAssetSaving] = useState(false);
-  const [assetMsg, setAssetMsg]       = useState(null); // { type: 'ok'|'err'|'info', text }
+  // ── 자산·수수료 상태
+  const [totalAssetsDisplay, setTotalAssetsDisplay] = useState('');
+  const [totalAssetsRaw, setTotalAssetsRaw]         = useState('');
+  const [buyFeeDisplay, setBuyFeeDisplay]           = useState('');
+  const [sellFeeDisplay, setSellFeeDisplay]         = useState('');
+  const [taxDisplay, setTaxDisplay]                 = useState('');
+  const [assetSaving, setAssetSaving]               = useState(false);
+  const [assetMsg, setAssetMsg]                     = useState(null);
 
   // ── 드롭다운 상태
-  const [activeTab, setActiveTab] = useState('sector');
-  const [options, setOptions]     = useState({});
-  const [newLabel, setNewLabel]   = useState('');
+  const [activeTab, setActiveTab]   = useState('sector');
+  const [options, setOptions]       = useState({});
+  const [newLabel, setNewLabel]     = useState('');
   const [optLoading, setOptLoading] = useState(false);
   const [optMsg, setOptMsg]         = useState(null);
+
+  // ── 드래그 상태
+  const dragIndexRef    = useRef(null); // 드래그 시작 인덱스
+  const dragOverRef     = useRef(null); // 현재 호버 중인 인덱스
+  const [dragIndex, setDragIndex]       = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
 
   // ── 초기 데이터 로드
   useEffect(() => {
@@ -117,7 +118,7 @@ export default function Settings() {
     }
   }
 
-  // ── 총 자산 입력 핸들러 (천단위 콤마)
+  // ── 총 자산 입력 핸들러
   function handleTotalAssetsChange(e) {
     const raw = fromDisplay(e.target.value);
     if (raw === '' || /^\d+$/.test(raw)) {
@@ -136,7 +137,6 @@ export default function Settings() {
     const taxRate     = rateFromDisplay(taxDisplay);
     const totalAssets = totalAssetsRaw === '' ? null : Number(totalAssetsRaw);
 
-    // 1) app_settings 저장
     const { error: settingsError } = await supabase
       .from('app_settings')
       .upsert({
@@ -153,7 +153,6 @@ export default function Settings() {
       return;
     }
 
-    // 2) 완료된 거래 전체 재계산 (sell_price가 있는 것만)
     if (buyFeeRate !== null && sellFeeRate !== null && taxRate !== null) {
       const { data: trades, error: fetchError } = await supabase
         .from('trades')
@@ -167,35 +166,20 @@ export default function Settings() {
           const bp  = Number(t.buy_price);
           const sp  = Number(t.sell_price);
           const qty = Number(t.quantity);
-
-          const profitAmount = (sp - bp) * qty;
-          const fee = Math.round((bp * qty * buyFeeRate + sp * qty * sellFeeRate) * 100) / 100;
-          const tax = Math.round(sp * qty * taxRate * 100) / 100;
+          const profitAmount    = (sp - bp) * qty;
+          const fee             = Math.round((bp * qty * buyFeeRate + sp * qty * sellFeeRate) * 100) / 100;
+          const tax             = Math.round(sp * qty * taxRate * 100) / 100;
           const netProfitAmount = Math.round((profitAmount - fee - tax) * 100) / 100;
           const netProfitRate   = bp > 0
             ? Math.round(netProfitAmount / (bp * qty) * 100 * 10000) / 10000
             : 0;
-
-          return {
-            id: t.id,
-            fee,
-            tax,
-            net_profit_amount: netProfitAmount,
-            net_profit_rate:   netProfitRate,
-          };
+          return { id: t.id, fee, tax, net_profit_amount: netProfitAmount, net_profit_rate: netProfitRate };
         });
 
-        // 개별 update (upsert는 NOT NULL 컬럼 충돌 위험)
         const results = await Promise.all(
           updates.map(u =>
-            supabase
-              .from('trades')
-              .update({
-                fee:               u.fee,
-                tax:               u.tax,
-                net_profit_amount: u.net_profit_amount,
-                net_profit_rate:   u.net_profit_rate,
-              })
+            supabase.from('trades')
+              .update({ fee: u.fee, tax: u.tax, net_profit_amount: u.net_profit_amount, net_profit_rate: u.net_profit_rate })
               .eq('id', u.id)
           )
         );
@@ -208,10 +192,7 @@ export default function Settings() {
         }
 
         setAssetSaving(false);
-        setAssetMsg({
-          type: 'ok',
-          text: `✅ 저장 완료! 기존 매매 ${trades.length}건 수수료·세금 재계산 완료`,
-        });
+        setAssetMsg({ type: 'ok', text: `✅ 저장 완료! 기존 매매 ${trades.length}건 수수료·세금 재계산 완료` });
       } else {
         setAssetSaving(false);
         setAssetMsg({ type: 'ok', text: '✅ 설정이 저장되었습니다.' });
@@ -243,10 +224,7 @@ export default function Settings() {
     if (error) {
       setOptMsg({ type: 'err', text: '추가 실패: ' + error.message });
     } else {
-      setOptions(prev => ({
-        ...prev,
-        [activeTab]: [...(prev[activeTab] || []), data],
-      }));
+      setOptions(prev => ({ ...prev, [activeTab]: [...(prev[activeTab] || []), data] }));
       setNewLabel('');
       setOptMsg({ type: 'ok', text: '✅ 추가되었습니다!' });
       setTimeout(() => setOptMsg(null), 2000);
@@ -259,12 +237,75 @@ export default function Settings() {
     const { error } = await supabase.from('dropdown_options').delete().eq('id', id);
     setOptLoading(false);
     if (!error) {
-      setOptions(prev => ({
-        ...prev,
-        [activeTab]: prev[activeTab].filter(o => o.id !== id),
-      }));
+      setOptions(prev => ({ ...prev, [activeTab]: prev[activeTab].filter(o => o.id !== id) }));
     }
   }
+
+  // ── 드래그앤드롭 핸들러 ──────────────────────────────────────
+
+  function handleDragStart(e, index) {
+    dragIndexRef.current = index;
+    setDragIndex(index);
+    // 드래그 고스트 이미지를 투명하게 만들어 깔끔하게 보이게 함
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleDragOver(e, index) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverRef.current !== index) {
+      dragOverRef.current = index;
+      setDragOverIndex(index);
+    }
+  }
+
+  function handleDragEnd() {
+    const fromIdx = dragIndexRef.current;
+    const toIdx   = dragOverRef.current;
+
+    // 상태 초기화
+    setDragIndex(null);
+    setDragOverIndex(null);
+    dragIndexRef.current  = null;
+    dragOverRef.current   = null;
+
+    // 같은 위치거나 유효하지 않으면 무시
+    if (fromIdx === null || toIdx === null || fromIdx === toIdx) return;
+
+    // 새 순서 배열 만들기
+    const list    = [...(options[activeTab] || [])];
+    const [moved] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, moved);
+
+    // sort_order 재부여 (0, 1, 2, ...)
+    const updated = list.map((item, idx) => ({ ...item, sort_order: idx }));
+
+    // 화면 즉시 반영
+    setOptions(prev => ({ ...prev, [activeTab]: updated }));
+
+    // DB 저장
+    saveOrderToDB(updated);
+  }
+
+  async function saveOrderToDB(list) {
+    setIsSavingOrder(true);
+    try {
+      await Promise.all(
+        list.map(item =>
+          supabase
+            .from('dropdown_options')
+            .update({ sort_order: item.sort_order })
+            .eq('id', item.id)
+        )
+      );
+    } catch (err) {
+      console.error('순서 저장 실패:', err);
+    } finally {
+      setIsSavingOrder(false);
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
 
   // ── 스타일
   const cardStyle = {
@@ -292,7 +333,6 @@ export default function Settings() {
     outline: 'none',
     background: '#fff',
   };
-  // 수수료율 입력 — 오른쪽에 % 단위 표시를 위한 래퍼
   const rateWrapStyle = {
     position: 'relative',
     display: 'flex',
@@ -300,7 +340,7 @@ export default function Settings() {
   };
   const rateInputStyle = {
     ...inputStyle,
-    paddingRight: '36px', // % 표시 공간
+    paddingRight: '36px',
   };
   const rateSuffixStyle = {
     position: 'absolute',
@@ -390,8 +430,6 @@ export default function Settings() {
 
         <div style={cardStyle}>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
-
-            {/* 총 자산 */}
             <div>
               <label style={labelStyle}>총 자산 (원)</label>
               <input
@@ -403,8 +441,6 @@ export default function Settings() {
                 placeholder="예: 40,000,000"
               />
             </div>
-
-            {/* 매수 수수료율 */}
             <div>
               <label style={labelStyle}>매수 수수료율 (%)</label>
               <div style={rateWrapStyle}>
@@ -419,8 +455,6 @@ export default function Settings() {
                 <span style={rateSuffixStyle}>%</span>
               </div>
             </div>
-
-            {/* 매도 수수료율 */}
             <div>
               <label style={labelStyle}>매도 수수료율 (%)</label>
               <div style={rateWrapStyle}>
@@ -435,8 +469,6 @@ export default function Settings() {
                 <span style={rateSuffixStyle}>%</span>
               </div>
             </div>
-
-            {/* 증권거래세율 */}
             <div>
               <label style={labelStyle}>증권거래세율 (%)</label>
               <div style={rateWrapStyle}>
@@ -451,7 +483,6 @@ export default function Settings() {
                 <span style={rateSuffixStyle}>%</span>
               </div>
             </div>
-
           </div>
 
           <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -464,23 +495,14 @@ export default function Settings() {
             {assetMsg && (
               <span style={{
                 fontSize: isMobile ? '14px' : '13px',
-                color: assetMsg.type === 'ok' ? '#16a34a'
-                     : assetMsg.type === 'info' ? '#2563eb'
-                     : '#dc2626',
+                color: assetMsg.type === 'ok' ? '#16a34a' : assetMsg.type === 'info' ? '#2563eb' : '#dc2626',
                 fontWeight: 500,
               }}>
                 {assetMsg.text}
               </span>
             )}
           </div>
-
-          {/* 재계산 설명 */}
-          <div style={{
-            marginTop: 12,
-            fontSize: isMobile ? '13px' : '12px',
-            color: '#94a3b8',
-            lineHeight: 1.5,
-          }}>
+          <div style={{ marginTop: 12, fontSize: isMobile ? '13px' : '12px', color: '#94a3b8', lineHeight: 1.5 }}>
             ※ 저장 시 이미 입력된 모든 완료 거래의 수수료·세금·순수익이 새 요율로 자동 재계산됩니다.
           </div>
         </div>
@@ -515,36 +537,103 @@ export default function Settings() {
 
           {/* 현재 카테고리 항목 목록 */}
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#64748b', marginBottom: 8 }}>
-              📋 {currentCatLabel} 항목 ({(options[activeTab] || []).length}개)
+            {/* 안내 헤더 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8,
+            }}>
+              <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#64748b' }}>
+                📋 {currentCatLabel} 항목 ({(options[activeTab] || []).length}개)
+              </div>
+              <div style={{
+                fontSize: isMobile ? '12px' : '11px',
+                color: '#94a3b8',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}>
+                {isSavingOrder
+                  ? <><RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} /> 저장 중...</>
+                  : <span>⠿ 드래그로 순서 변경</span>
+                }
+              </div>
             </div>
+
             {(options[activeTab] || []).length === 0 ? (
               <div style={{ color: '#94a3b8', fontSize: isMobile ? '14px' : '13px', padding: '8px 0' }}>
                 등록된 항목이 없습니다.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {(options[activeTab] || []).map(opt => (
-                  <div key={opt.id} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: 8,
-                    padding: '8px 12px',
-                  }}>
-                    <span style={{ fontSize: isMobile ? '15px' : '14px', color: '#1e293b' }}>{opt.label}</span>
-                    <button
-                      style={btnDanger}
-                      onClick={() => handleDeleteOption(opt.id)}
-                      disabled={optLoading}
-                      title="삭제"
+                {(options[activeTab] || []).map((opt, index) => {
+                  const isDragging  = dragIndex === index;
+                  const isDragOver  = dragOverIndex === index && dragIndex !== index;
+
+                  return (
+                    <div
+                      key={opt.id}
+                      draggable
+                      onDragStart={e => handleDragStart(e, index)}
+                      onDragOver={e => handleDragOver(e, index)}
+                      onDragEnd={handleDragEnd}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        background: isDragging ? '#eff6ff' : '#f8fafc',
+                        border: isDragOver
+                          ? '2px solid #2563eb'
+                          : isDragging
+                            ? '1.5px dashed #93c5fd'
+                            : '1px solid #e2e8f0',
+                        borderRadius: 8,
+                        padding: '8px 12px',
+                        opacity: isDragging ? 0.5 : 1,
+                        transition: 'border 0.1s, opacity 0.1s',
+                        cursor: 'grab',
+                        userSelect: 'none',
+                      }}
                     >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                ))}
+                      {/* 드래그 핸들 + 라벨 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                        {/* 드래그 핸들 아이콘 */}
+                        <span style={{
+                          color: '#cbd5e1',
+                          fontSize: 18,
+                          lineHeight: 1,
+                          cursor: 'grab',
+                          flexShrink: 0,
+                          letterSpacing: '-1px',
+                        }}>
+                          ⠿
+                        </span>
+                        <span style={{
+                          fontSize: isMobile ? '15px' : '14px',
+                          color: '#1e293b',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {opt.label}
+                        </span>
+                      </div>
+
+                      {/* 삭제 버튼 */}
+                      <button
+                        style={btnDanger}
+                        onClick={() => handleDeleteOption(opt.id)}
+                        disabled={optLoading}
+                        title="삭제"
+                        // 삭제 버튼 클릭 시 드래그 이벤트가 발생하지 않도록
+                        onDragStart={e => e.stopPropagation()}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -577,7 +666,6 @@ export default function Settings() {
 
       </div>
 
-      {/* 스피너 애니메이션 */}
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
