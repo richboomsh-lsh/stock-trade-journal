@@ -14,6 +14,7 @@ function Navbar() {
     { to: '/new', label: '+ 매매' },
     { to: '/journal', label: '매매일지' },
     { to: '/stats', label: '통계' },
+    { to: '/settings', label: '설정' },
   ]
   return (
     <nav style={{
