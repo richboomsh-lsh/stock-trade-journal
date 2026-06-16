@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Save, Settings as SettingsIcon, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, Settings as SettingsIcon, RefreshCw, Pencil } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 const useIsMobile = () => {
@@ -70,6 +70,10 @@ export default function Settings() {
   const [newLabel, setNewLabel]     = useState('');
   const [optLoading, setOptLoading] = useState(false);
   const [optMsg, setOptMsg]         = useState(null);
+
+  // ── 인라인 편집 상태
+  const [editingId, setEditingId]     = useState(null);   // 현재 편집 중인 항목 id
+  const [editingLabel, setEditingLabel] = useState('');   // 편집 중인 텍스트
 
   // ── 드래그 상태
   const dragIndexRef    = useRef(null); // 드래그 시작 인덱스
@@ -239,6 +243,26 @@ export default function Settings() {
     if (!error) {
       setOptions(prev => ({ ...prev, [activeTab]: prev[activeTab].filter(o => o.id !== id) }));
     }
+  }
+
+  // ── 드롭다운 항목 이름 변경
+  async function handleRenameOption(id) {
+    const trimmed = editingLabel.trim();
+    if (!trimmed) { setEditingId(null); return; }
+    setOptLoading(true);
+    const { error } = await supabase
+      .from('dropdown_options')
+      .update({ label: trimmed })
+      .eq('id', id);
+    if (!error) {
+      setOptions(prev => ({
+        ...prev,
+        [activeTab]: prev[activeTab].map(o => o.id === id ? { ...o, label: trimmed } : o),
+      }));
+    }
+    setEditingId(null);
+    setEditingLabel('');
+    setOptLoading(false);
   }
 
   // ── 드래그앤드롭 핸들러 ──────────────────────────────────────
@@ -609,28 +633,67 @@ export default function Settings() {
                         }}>
                           ⠿
                         </span>
-                        <span style={{
-                          fontSize: isMobile ? '15px' : '14px',
-                          color: '#1e293b',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}>
-                          {opt.label}
-                        </span>
+                        {editingId === opt.id ? (
+                          <input
+                            autoFocus
+                            type="text"
+                            value={editingLabel}
+                            onChange={e => setEditingLabel(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleRenameOption(opt.id);
+                              if (e.key === 'Escape') { setEditingId(null); setEditingLabel(''); }
+                            }}
+                            onBlur={() => handleRenameOption(opt.id)}
+                            onDragStart={e => e.stopPropagation()}
+                            style={{
+                              flex: 1,
+                              fontSize: isMobile ? '15px' : '14px',
+                              border: '1.5px solid #2563eb',
+                              borderRadius: 6,
+                              padding: '2px 8px',
+                              outline: 'none',
+                              color: '#1e293b',
+                              background: '#fff',
+                            }}
+                          />
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: isMobile ? '15px' : '14px',
+                              color: '#1e293b',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              flex: 1,
+                              cursor: 'text',
+                            }}
+                            title="클릭하여 이름 변경"
+                            onClick={() => { setEditingId(opt.id); setEditingLabel(opt.label); }}
+                          >
+                            {opt.label}
+                          </span>
+                        )}
                       </div>
 
-                      {/* 삭제 버튼 */}
-                      <button
-                        style={btnDanger}
-                        onClick={() => handleDeleteOption(opt.id)}
-                        disabled={optLoading}
-                        title="삭제"
-                        // 삭제 버튼 클릭 시 드래그 이벤트가 발생하지 않도록
-                        onDragStart={e => e.stopPropagation()}
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      {/* 수정/삭제 버튼 */}
+                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onDragStart={e => e.stopPropagation()}>
+                        <button
+                          style={{ ...btnDanger, background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}
+                          onClick={() => { setEditingId(opt.id); setEditingLabel(opt.label); }}
+                          disabled={optLoading}
+                          title="이름 변경"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          style={btnDanger}
+                          onClick={() => handleDeleteOption(opt.id)}
+                          disabled={optLoading}
+                          title="삭제"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
