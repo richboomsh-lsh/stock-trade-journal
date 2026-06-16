@@ -575,7 +575,8 @@ export default function NewTrade() {
               ].map(field => (
                 <div key={field.name}>
                   <Label isMobile={isMobile}>{field.label}</Label>
-                  <textarea className="nt-input" style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }}
+                  <textarea className="nt-input"
+                    style={{ ...inputStyle, minHeight: field.name === 'trade_log' ? '160px' : '80px', resize: 'vertical' }}
                     {...register(field.name)} placeholder={field.placeholder} />
                 </div>
               ))}

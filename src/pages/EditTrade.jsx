@@ -818,7 +818,8 @@ export default function EditTrade() {
           <div>
             {labelEl('대응 기록')}
             <SectionBox>
-              <textarea {...register('trade_log')} className="et-input" style={textareaStyle}
+              <textarea {...register('trade_log')} className="et-input"
+                style={{ ...textareaStyle, minHeight: '160px' }}
                 placeholder="매매 중 어떻게 대응했는지 기록하세요" />
             </SectionBox>
           </div>
