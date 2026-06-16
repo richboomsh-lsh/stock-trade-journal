@@ -29,7 +29,6 @@ function useIsMobile() {
   return isMobile
 }
 
-// ─── SectionBox ───────────────────────────────────────────────────────────────
 function SectionBox({ children }) {
   return (
     <div style={{
@@ -107,7 +106,6 @@ function TagSelector({ options, selected, onChange, color = '#2563eb', isMobile 
   )
 }
 
-// ─── 천단위 콤마 유틸 ──────────────────────────────────────────────────────────
 function toComma(val) {
   if (val === '' || val === null || val === undefined) return ''
   const num = String(val).replace(/[^0-9]/g, '')
@@ -118,6 +116,13 @@ function toComma(val) {
 function fromComma(val) {
   if (val === '' || val === null || val === undefined) return ''
   return String(val).replace(/[^0-9]/g, '')
+}
+
+// 수익 색상: 양수=빨강, 음수=파랑, 0=회색
+function profitColor(value) {
+  if (value > 0) return '#dc2626'
+  if (value < 0) return '#2563eb'
+  return '#6b7280'
 }
 
 export default function EditTrade() {
@@ -136,14 +141,18 @@ export default function EditTrade() {
   const [mistakeBuy, setMistakeBuy] = useState([])
   const [mistakeSell, setMistakeSell] = useState([])
   const [market, setMarket] = useState('')
-  const [feeSettings, setFeeSettings] = useState({ buy_fee_rate: 0.015, sell_fee_rate: 0.015, tax_rate: 0.2 })
 
-  // ─── 천단위 콤마 숫자 state ──────────────────────────────────────────────────
-  const [buyPriceRaw, setBuyPriceRaw] = useState('')   // 실제 숫자 문자열 (콤마 없음)
+  // ✅ 수정: 기본값을 DB 저장 형식(소수)으로 맞춤 (0.015% → 0.00015)
+  const [feeSettings, setFeeSettings] = useState({
+    buy_fee_rate: 0.00015,
+    sell_fee_rate: 0.00015,
+    tax_rate: 0.0018,
+  })
+
+  const [buyPriceRaw, setBuyPriceRaw] = useState('')
   const [sellPriceRaw, setSellPriceRaw] = useState('')
   const [quantityRaw, setQuantityRaw] = useState('')
-
-  const [buyPriceDisplay, setBuyPriceDisplay] = useState('')   // 화면에 보이는 콤마 포함 값
+  const [buyPriceDisplay, setBuyPriceDisplay] = useState('')
   const [sellPriceDisplay, setSellPriceDisplay] = useState('')
   const [quantityDisplay, setQuantityDisplay] = useState('')
 
@@ -155,7 +164,6 @@ export default function EditTrade() {
   const [uploadProgress, setUploadProgress] = useState(false)
   const [pasteHint, setPasteHint] = useState(false)
 
-  // ─── 스타일 ────────────────────────────────────────────────────────────────
   const inputStyle = {
     width: '100%',
     padding: '8px 12px',
@@ -185,14 +193,12 @@ export default function EditTrade() {
     </label>
   )
 
-  // ─── watch는 날짜·position_size 등 나머지 필드에만 사용 ──────────────────────
   const buyDate = watch('buy_date')
   const sellDate = watch('sell_date')
 
-  // 숫자 계산은 raw state 기준
-  const buyPrice = buyPriceRaw !== '' ? Number(buyPriceRaw) : null
+  const buyPrice  = buyPriceRaw  !== '' ? Number(buyPriceRaw)  : null
   const sellPrice = sellPriceRaw !== '' ? Number(sellPriceRaw) : null
-  const quantity = quantityRaw !== '' ? Number(quantityRaw) : null
+  const quantity  = quantityRaw  !== '' ? Number(quantityRaw)  : null
 
   const profitAmount = (buyPrice !== null && sellPrice !== null && quantity !== null)
     ? calcProfitAmount(buyPrice, sellPrice, quantity) : null
@@ -201,26 +207,27 @@ export default function EditTrade() {
   const holdingDays = buyDate && sellDate
     ? calcHoldingDays(buyDate, sellDate) : null
 
+  // ✅ 수정: DB 저장값(소수)을 그대로 사용 — / 100 제거
   const fee = (buyPrice !== null && sellPrice !== null && quantity !== null)
     ? Math.round(
-        buyPrice * quantity * (feeSettings.buy_fee_rate / 100) +
-        sellPrice * quantity * (feeSettings.sell_fee_rate / 100)
+        buyPrice  * quantity * feeSettings.buy_fee_rate +
+        sellPrice * quantity * feeSettings.sell_fee_rate
       )
     : null
 
-  const tax = (sellPrice !== null && quantity !== null && profitAmount !== null && profitAmount > 0)
-    ? Math.round(profitAmount * (feeSettings.tax_rate / 100))
+  // ✅ 수정: 세금 = 매도금액 × 세율 (수익 여부와 무관하게 항상 발생)
+  const tax = (sellPrice !== null && quantity !== null)
+    ? Math.round(sellPrice * quantity * feeSettings.tax_rate)
     : null
 
-  const netProfitAmount = (profitAmount !== null && fee !== null)
-    ? profitAmount - fee - (tax || 0)
+  const netProfitAmount = (profitAmount !== null && fee !== null && tax !== null)
+    ? profitAmount - fee - tax
     : null
 
-  const netProfitRate = (netProfitAmount !== null && buyPrice !== null && quantity !== null)
+  const netProfitRate = (netProfitAmount !== null && buyPrice !== null && quantity !== null && buyPrice * quantity !== 0)
     ? (netProfitAmount / (buyPrice * quantity)) * 100
     : null
 
-  // ─── 천단위 input 핸들러 ────────────────────────────────────────────────────
   const handleNumInput = (rawSetter, displaySetter) => (e) => {
     const digits = fromComma(e.target.value)
     rawSetter(digits)
@@ -238,15 +245,12 @@ export default function EditTrade() {
       .from('dropdown_options')
       .select('category, label')
       .order('sort_order', { ascending: true })
-
     if (error || !data) return
-
     const grouped = { ...DEFAULT_OPTIONS }
     const categories = [...new Set(data.map(r => r.category))]
     categories.forEach(cat => {
       grouped[cat] = data.filter(r => r.category === cat).map(r => r.label)
     })
-
     setOptions(grouped)
   }
 
@@ -256,12 +260,12 @@ export default function EditTrade() {
       .select('buy_fee_rate, sell_fee_rate, tax_rate')
       .eq('id', 1)
       .single()
-
     if (!error && data) {
+      // ✅ 수정: DB 저장값(소수)을 그대로 사용
       setFeeSettings({
-        buy_fee_rate: Number(data.buy_fee_rate) || 0.015,
-        sell_fee_rate: Number(data.sell_fee_rate) || 0.015,
-        tax_rate: Number(data.tax_rate) || 0.2,
+        buy_fee_rate:  Number(data.buy_fee_rate)  || 0.00015,
+        sell_fee_rate: Number(data.sell_fee_rate) || 0.00015,
+        tax_rate:      Number(data.tax_rate)      || 0.0018,
       })
     }
   }
@@ -269,13 +273,11 @@ export default function EditTrade() {
   const fetchTrade = async () => {
     const { data, error } = await supabase
       .from('trades').select('*').eq('id', id).single()
-
     if (error || !data) {
       alert('매매 기록을 찾을 수 없습니다.')
       navigate('/journal')
       return
     }
-
     const fields = [
       'stock_name', 'buy_date', 'sell_date',
       'position_size', 'sector', 'trade_style', 'market_condition',
@@ -285,21 +287,17 @@ export default function EditTrade() {
     ]
     fields.forEach(f => setValue(f, data[f] || ''))
 
-    // 숫자 필드는 state로 세팅
     if (data.buy_price) {
       const v = String(Math.round(data.buy_price))
-      setBuyPriceRaw(v)
-      setBuyPriceDisplay(Number(v).toLocaleString())
+      setBuyPriceRaw(v); setBuyPriceDisplay(Number(v).toLocaleString())
     }
     if (data.sell_price) {
       const v = String(Math.round(data.sell_price))
-      setSellPriceRaw(v)
-      setSellPriceDisplay(Number(v).toLocaleString())
+      setSellPriceRaw(v); setSellPriceDisplay(Number(v).toLocaleString())
     }
     if (data.quantity) {
       const v = String(data.quantity)
-      setQuantityRaw(v)
-      setQuantityDisplay(Number(v).toLocaleString())
+      setQuantityRaw(v); setQuantityDisplay(Number(v).toLocaleString())
     }
 
     setMarket(data.market || '')
@@ -320,7 +318,6 @@ export default function EditTrade() {
       })
       setExistingUrls(urls)
     }
-
     setLoading(false)
   }
 
@@ -332,9 +329,7 @@ export default function EditTrade() {
     setNewPreviews(prev => [...prev, ...previews])
   }, [])
 
-  const onDrop = useCallback((acceptedFiles) => {
-    addNewImages(acceptedFiles)
-  }, [addNewImages])
+  const onDrop = useCallback((acceptedFiles) => { addNewImages(acceptedFiles) }, [addNewImages])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop, accept: { 'image/*': [] }, multiple: true,
@@ -396,71 +391,72 @@ export default function EditTrade() {
         .map(i => formData[`news_link_${i}`])
         .filter(l => l && l.trim())
 
-      const bPrice = buyPrice !== null ? buyPrice : null
+      const bPrice = buyPrice  !== null ? buyPrice  : null
       const sPrice = sellPrice !== null ? sellPrice : null
-      const qty = quantity !== null ? quantity : null
+      const qty    = quantity  !== null ? quantity  : null
 
       const pAmount = (bPrice && sPrice && qty) ? calcProfitAmount(bPrice, sPrice, qty) : null
-      const pRate = (bPrice && sPrice) ? calcProfitRate(bPrice, sPrice) : null
-      const hDays = buyDate && sellDate ? calcHoldingDays(buyDate, sellDate) : null
+      const pRate   = (bPrice && sPrice)         ? calcProfitRate(bPrice, sPrice)        : null
+      const hDays   = buyDate && sellDate         ? calcHoldingDays(buyDate, sellDate)    : null
 
+      // ✅ 수정: DB 저장값(소수) 그대로 사용, / 100 제거
       const calcFee = (bPrice && sPrice && qty)
         ? Math.round(
-            bPrice * qty * (feeSettings.buy_fee_rate / 100) +
-            sPrice * qty * (feeSettings.sell_fee_rate / 100)
+            bPrice * qty * feeSettings.buy_fee_rate +
+            sPrice * qty * feeSettings.sell_fee_rate
           )
         : null
-      const calcTax = (sPrice && qty && pAmount !== null && pAmount > 0)
-        ? Math.round(pAmount * (feeSettings.tax_rate / 100))
+      // ✅ 수정: 세금 = 매도금액 × 세율 (수익 여부 무관)
+      const calcTax = (sPrice && qty)
+        ? Math.round(sPrice * qty * feeSettings.tax_rate)
         : null
-      const calcNet = (pAmount !== null && calcFee !== null)
-        ? pAmount - calcFee - (calcTax || 0)
+      const calcNet = (pAmount !== null && calcFee !== null && calcTax !== null)
+        ? pAmount - calcFee - calcTax
         : null
-      const calcNetRate = (calcNet !== null && bPrice && qty)
+      const calcNetRate = (calcNet !== null && bPrice && qty && bPrice * qty !== 0)
         ? (calcNet / (bPrice * qty)) * 100
         : null
 
       const payload = {
-        stock_name: formData.stock_name,
-        market: market || null,
-        buy_date: formData.buy_date,
-        buy_price: bPrice,
-        sell_date: formData.sell_date || null,
-        sell_price: sPrice,
-        quantity: qty,
-        position_size: formData.position_size ? Number(formData.position_size) : null,
-        profit_amount: pAmount,
-        profit_rate: pRate,
-        holding_days: hDays,
-        fee: calcFee,
-        tax: calcTax,
+        stock_name:     formData.stock_name,
+        market:         market || null,
+        buy_date:       formData.buy_date,
+        buy_price:      bPrice,
+        sell_date:      formData.sell_date || null,
+        sell_price:     sPrice,
+        quantity:       qty,
+        position_size:  formData.position_size ? Number(formData.position_size) : null,
+        profit_amount:  pAmount,
+        profit_rate:    pRate,
+        holding_days:   hDays,
+        fee:            calcFee,
+        tax:            calcTax,
         net_profit_amount: calcNet !== null ? Math.round(calcNet) : null,
-        net_profit_rate: calcNetRate !== null ? parseFloat(calcNetRate.toFixed(4)) : null,
-        sector: formData.sector || null,
-        themes: themes.length > 0 ? themes : null,
-        trade_style: formData.trade_style || null,
-        market_condition: formData.market_condition || null,
-        trade_grade: formData.trade_grade || null,
-        emotion_before: emotionBefore.length > 0 ? emotionBefore : null,
-        emotion_after: emotionAfter.length > 0 ? emotionAfter : null,
-        sell_reason: formData.sell_reason || null,
-        mistake_buy: mistakeBuy.length > 0 ? mistakeBuy : null,
-        mistake_sell: mistakeSell.length > 0 ? mistakeSell : null,
-        material_context: formData.material_context || null,
-        entry_reason: formData.entry_reason || null,
-        stop_loss_plan: formData.stop_loss_plan || null,
-        trade_log: formData.trade_log || null,
-        reflection_good: formData.reflection_good || null,
-        reflection_bad: formData.reflection_bad || null,
-        reflection_next: formData.reflection_next || null,
-        chart_images: finalImagePaths.length > 0 ? finalImagePaths : null,
-        news_links: newsLinks.length > 0 ? newsLinks : null,
-        updated_at: new Date().toISOString(),
+        net_profit_rate:   calcNetRate !== null ? parseFloat(calcNetRate.toFixed(4)) : null,
+        sector:            formData.sector         || null,
+        themes:            themes.length > 0       ? themes       : null,
+        trade_style:       formData.trade_style    || null,
+        market_condition:  formData.market_condition || null,
+        trade_grade:       formData.trade_grade    || null,
+        emotion_before:    emotionBefore.length > 0 ? emotionBefore : null,
+        emotion_after:     emotionAfter.length > 0  ? emotionAfter  : null,
+        sell_reason:       formData.sell_reason    || null,
+        mistake_buy:       mistakeBuy.length > 0   ? mistakeBuy   : null,
+        mistake_sell:      mistakeSell.length > 0  ? mistakeSell  : null,
+        material_context:  formData.material_context || null,
+        entry_reason:      formData.entry_reason   || null,
+        stop_loss_plan:    formData.stop_loss_plan  || null,
+        trade_log:         formData.trade_log       || null,
+        reflection_good:   formData.reflection_good || null,
+        reflection_bad:    formData.reflection_bad  || null,
+        reflection_next:   formData.reflection_next || null,
+        chart_images:      finalImagePaths.length > 0 ? finalImagePaths : null,
+        news_links:        newsLinks.length > 0 ? newsLinks : null,
+        updated_at:        new Date().toISOString(),
       }
 
       const { error } = await supabase.from('trades').update(payload).eq('id', id)
       if (error) throw error
-
       navigate(`/trade/${id}`)
     } catch (err) {
       alert('저장 중 오류가 발생했습니다: ' + err.message)
@@ -476,7 +472,6 @@ export default function EditTrade() {
 
   return (
     <div>
-      {/* 포커스 스타일 주입 */}
       <style>{`
         .et-input:focus {
           outline: none;
@@ -496,67 +491,98 @@ export default function EditTrade() {
 
       <form onSubmit={handleSubmit(onSubmit)}>
 
-        {/* 자동계산 미리보기 카드 */}
-        {(profitRate !== null) && (
+        {/* ── 자동계산 미리보기 카드 ── */}
+        {profitRate !== null && (
           <div style={{
             background: profitRate >= 0 ? '#eff6ff' : '#fef2f2',
             border: `1px solid ${profitRate >= 0 ? '#bfdbfe' : '#fecaca'}`,
             borderRadius: '12px', padding: '16px', marginBottom: '16px',
           }}>
-            <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginBottom: netProfitAmount !== null ? '12px' : 0 }}>
-              <div>
-                <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>수익률</div>
-                <div style={{ fontSize: '22px', fontWeight: 700, color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
-                  {profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%
-                </div>
-              </div>
-              {profitAmount !== null && (
-                <div>
-                  <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>수익금</div>
-                  <div style={{ fontSize: '22px', fontWeight: 700, color: profitRate >= 0 ? '#2563eb' : '#dc2626' }}>
-                    {profitAmount >= 0 ? '+' : ''}{Math.round(profitAmount).toLocaleString()}원
-                  </div>
-                </div>
-              )}
-              {holdingDays !== null && (
-                <div>
-                  <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>보유기간</div>
-                  <div style={{ fontSize: '22px', fontWeight: 700, color: '#1e293b' }}>{holdingDays}일</div>
-                </div>
-              )}
-            </div>
-
-            {netProfitAmount !== null && (
-              <div style={{
-                display: 'flex', gap: '16px', flexWrap: 'wrap',
-                paddingTop: '12px', borderTop: '1px solid #e2e8f0',
-              }}>
-                <div>
-                  <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>수수료</div>
-                  <div style={{ fontSize: isMobile ? '16px' : '15px', fontWeight: 600, color: '#dc2626' }}>
-                    -{fee !== null ? fee.toLocaleString() : 0}원
-                  </div>
-                </div>
-                {tax !== null && tax > 0 && (
+            {netProfitAmount !== null ? (
+              /* 순수익 있을 때: 순수익을 크게, 수익/수수료/세금은 작게 아래에 */
+              <>
+                {/* 상단: 순수익률·순수익금·보유기간 — 크게 */}
+                <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                  {netProfitRate !== null && (
+                    <div>
+                      <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>순수익률</div>
+                      <div style={{ fontSize: '22px', fontWeight: 700, color: profitColor(netProfitRate) }}>
+                        {netProfitRate >= 0 ? '+' : ''}{netProfitRate.toFixed(2)}%
+                      </div>
+                    </div>
+                  )}
                   <div>
-                    <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>세금</div>
-                    <div style={{ fontSize: isMobile ? '16px' : '15px', fontWeight: 600, color: '#dc2626' }}>
-                      -{tax.toLocaleString()}원
+                    <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>순수익금</div>
+                    <div style={{ fontSize: '22px', fontWeight: 700, color: profitColor(netProfitAmount) }}>
+                      {netProfitAmount >= 0 ? '+' : ''}{Math.round(netProfitAmount).toLocaleString()}원
+                    </div>
+                  </div>
+                  {holdingDays !== null && (
+                    <div>
+                      <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>보유기간</div>
+                      <div style={{ fontSize: '22px', fontWeight: 700, color: '#1e293b' }}>{holdingDays}일</div>
+                    </div>
+                  )}
+                </div>
+                {/* 하단: 수익률·수익금·수수료·세금 — 작게 */}
+                <div style={{
+                  display: 'flex', gap: '16px', flexWrap: 'wrap',
+                  paddingTop: '10px', borderTop: '1px solid #e2e8f0',
+                }}>
+                  <div>
+                    <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>수익률</div>
+                    <div style={{ fontSize: isMobile ? '15px' : '14px', fontWeight: 600, color: profitColor(profitRate) }}>
+                      {profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%
+                    </div>
+                  </div>
+                  {profitAmount !== null && (
+                    <div>
+                      <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>수익금</div>
+                      <div style={{ fontSize: isMobile ? '15px' : '14px', fontWeight: 600, color: profitColor(profitAmount) }}>
+                        {profitAmount >= 0 ? '+' : ''}{Math.round(profitAmount).toLocaleString()}원
+                      </div>
+                    </div>
+                  )}
+                  {fee !== null && (
+                    <div>
+                      <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>수수료</div>
+                      {/* ✅ ▼ 기호: 차감 항목임을 명확히 표시 */}
+                      <div style={{ fontSize: isMobile ? '15px' : '14px', fontWeight: 600, color: '#64748b' }}>
+                        ▼{fee.toLocaleString()}원
+                      </div>
+                    </div>
+                  )}
+                  {tax !== null && tax > 0 && (
+                    <div>
+                      <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>세금</div>
+                      <div style={{ fontSize: isMobile ? '15px' : '14px', fontWeight: 600, color: '#64748b' }}>
+                        ▼{tax.toLocaleString()}원
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              /* 순수익 없을 때: 수익률·수익금·보유기간만 크게 */
+              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>수익률</div>
+                  <div style={{ fontSize: '22px', fontWeight: 700, color: profitColor(profitRate) }}>
+                    {profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%
+                  </div>
+                </div>
+                {profitAmount !== null && (
+                  <div>
+                    <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>수익금</div>
+                    <div style={{ fontSize: '22px', fontWeight: 700, color: profitColor(profitAmount) }}>
+                      {profitAmount >= 0 ? '+' : ''}{Math.round(profitAmount).toLocaleString()}원
                     </div>
                   </div>
                 )}
-                <div>
-                  <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>순수익금</div>
-                  <div style={{ fontSize: isMobile ? '16px' : '15px', fontWeight: 700, color: netProfitAmount >= 0 ? '#2563eb' : '#dc2626' }}>
-                    {netProfitAmount >= 0 ? '+' : ''}{Math.round(netProfitAmount).toLocaleString()}원
-                  </div>
-                </div>
-                {netProfitRate !== null && (
+                {holdingDays !== null && (
                   <div>
-                    <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>순수익률</div>
-                    <div style={{ fontSize: isMobile ? '16px' : '15px', fontWeight: 700, color: netProfitRate >= 0 ? '#2563eb' : '#dc2626' }}>
-                      {netProfitRate >= 0 ? '+' : ''}{netProfitRate.toFixed(2)}%
-                    </div>
+                    <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>보유기간</div>
+                    <div style={{ fontSize: '22px', fontWeight: 700, color: '#1e293b' }}>{holdingDays}일</div>
                   </div>
                 )}
               </div>
@@ -564,10 +590,8 @@ export default function EditTrade() {
           </div>
         )}
 
-        {/* ── 기본 거래 정보 ─────────────────────────────────── */}
+        {/* ── 기본 거래 정보 ── */}
         <Section title="기본 거래 정보" isMobile={isMobile}>
-
-          {/* 종목명 */}
           <div style={{ marginBottom: '12px' }}>
             {labelEl('종목명', true)}
             <SectionBox>
@@ -585,7 +609,6 @@ export default function EditTrade() {
             </SectionBox>
           </div>
 
-          {/* 시장 구분 */}
           <div style={{ marginBottom: '12px' }}>
             {labelEl('시장 구분')}
             <SectionBox>
@@ -609,31 +632,21 @@ export default function EditTrade() {
             </SectionBox>
           </div>
 
-          {/* 날짜 / 가격 */}
           <Row>
             <div>
               {labelEl('매수일', true)}
               <SectionBox>
-                <input
-                  type="date"
-                  {...register('buy_date', { required: true })}
-                  className="et-input"
-                  style={inputStyle}
-                />
+                <input type="date" {...register('buy_date', { required: true })}
+                  className="et-input" style={inputStyle} />
               </SectionBox>
             </div>
             <div>
               {labelEl('매수가 (원)', true)}
               <SectionBox>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="et-input"
-                  style={inputStyle}
+                <input type="text" inputMode="numeric" className="et-input" style={inputStyle}
                   value={buyPriceDisplay}
                   onChange={handleNumInput(setBuyPriceRaw, setBuyPriceDisplay)}
-                  placeholder="0"
-                />
+                  placeholder="0" />
               </SectionBox>
             </div>
           </Row>
@@ -642,26 +655,17 @@ export default function EditTrade() {
             <div>
               {labelEl('매도일')}
               <SectionBox>
-                <input
-                  type="date"
-                  {...register('sell_date')}
-                  className="et-input"
-                  style={inputStyle}
-                />
+                <input type="date" {...register('sell_date')}
+                  className="et-input" style={inputStyle} />
               </SectionBox>
             </div>
             <div>
               {labelEl('매도가 (원)')}
               <SectionBox>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="et-input"
-                  style={inputStyle}
+                <input type="text" inputMode="numeric" className="et-input" style={inputStyle}
                   value={sellPriceDisplay}
                   onChange={handleNumInput(setSellPriceRaw, setSellPriceDisplay)}
-                  placeholder="0"
-                />
+                  placeholder="0" />
               </SectionBox>
             </div>
           </Row>
@@ -670,35 +674,24 @@ export default function EditTrade() {
             <div>
               {labelEl('수량 (주)')}
               <SectionBox>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="et-input"
-                  style={inputStyle}
+                <input type="text" inputMode="numeric" className="et-input" style={inputStyle}
                   value={quantityDisplay}
                   onChange={handleNumInput(setQuantityRaw, setQuantityDisplay)}
-                  placeholder="0"
-                />
+                  placeholder="0" />
               </SectionBox>
             </div>
             <div>
               {labelEl('포지션 비중 (%)')}
               <SectionBox>
-                <input
-                  type="number"
-                  {...register('position_size')}
-                  className="et-input"
-                  style={inputStyle}
-                  placeholder="0~100"
-                  min="0"
-                  max="100"
-                />
+                <input type="number" {...register('position_size')}
+                  className="et-input" style={inputStyle}
+                  placeholder="0~100" min="0" max="100" />
               </SectionBox>
             </div>
           </Row>
         </Section>
 
-        {/* ── 분류 정보 ──────────────────────────────────────── */}
+        {/* ── 분류 정보 ── */}
         <Section title="분류 정보" isMobile={isMobile}>
           <Row>
             <div>
@@ -734,12 +727,13 @@ export default function EditTrade() {
           <div>
             {labelEl('테마 (복수 선택 가능)')}
             <SectionBox>
-              <TagSelector options={options.theme} selected={themes} onChange={setThemes} color="#7c3aed" isMobile={isMobile} />
+              <TagSelector options={options.theme} selected={themes} onChange={setThemes}
+                color="#7c3aed" isMobile={isMobile} />
             </SectionBox>
           </div>
         </Section>
 
-        {/* ── 정성 평가 ──────────────────────────────────────── */}
+        {/* ── 정성 평가 ── */}
         <Section title="정성 평가" isMobile={isMobile}>
           <Row cols={2}>
             <div>
@@ -765,33 +759,34 @@ export default function EditTrade() {
           <div style={{ marginBottom: '12px' }}>
             {labelEl('매수 전 감정 (복수 선택 가능)')}
             <SectionBox>
-              <TagSelector options={options.emotion_before} selected={emotionBefore} onChange={setEmotionBefore} color="#f59e0b" isMobile={isMobile} />
+              <TagSelector options={options.emotion_before} selected={emotionBefore}
+                onChange={setEmotionBefore} color="#f59e0b" isMobile={isMobile} />
             </SectionBox>
           </div>
-
           <div style={{ marginBottom: '12px' }}>
             {labelEl('매도 후 감정 (복수 선택 가능)')}
             <SectionBox>
-              <TagSelector options={options.emotion_after} selected={emotionAfter} onChange={setEmotionAfter} color="#8b5cf6" isMobile={isMobile} />
+              <TagSelector options={options.emotion_after} selected={emotionAfter}
+                onChange={setEmotionAfter} color="#8b5cf6" isMobile={isMobile} />
             </SectionBox>
           </div>
-
           <div style={{ marginBottom: '12px' }}>
             {labelEl('매수 실수 (복수 선택 가능)')}
             <SectionBox>
-              <TagSelector options={options.mistake_buy} selected={mistakeBuy} onChange={setMistakeBuy} color="#dc2626" isMobile={isMobile} />
+              <TagSelector options={options.mistake_buy} selected={mistakeBuy}
+                onChange={setMistakeBuy} color="#dc2626" isMobile={isMobile} />
             </SectionBox>
           </div>
-
           <div>
             {labelEl('매도 실수 (복수 선택 가능)')}
             <SectionBox>
-              <TagSelector options={options.mistake_sell} selected={mistakeSell} onChange={setMistakeSell} color="#ea580c" isMobile={isMobile} />
+              <TagSelector options={options.mistake_sell} selected={mistakeSell}
+                onChange={setMistakeSell} color="#ea580c" isMobile={isMobile} />
             </SectionBox>
           </div>
         </Section>
 
-        {/* ── 매매 근거 ──────────────────────────────────────── */}
+        {/* ── 매매 근거 ── */}
         <Section title="매매 근거" isMobile={isMobile}>
           <div style={{ marginBottom: '12px' }}>
             {labelEl('재료 및 시장상황')}
@@ -825,7 +820,7 @@ export default function EditTrade() {
           </div>
         </Section>
 
-        {/* ── 성찰 ───────────────────────────────────────────── */}
+        {/* ── 성찰 ── */}
         <Section title="성찰" isMobile={isMobile}>
           <div style={{ marginBottom: '12px' }}>
             {labelEl('✅ 잘한 점')}
@@ -850,7 +845,7 @@ export default function EditTrade() {
           </div>
         </Section>
 
-        {/* ── 차트 이미지 ────────────────────────────────────── */}
+        {/* ── 차트 이미지 ── */}
         <Section title="차트 이미지" isMobile={isMobile}>
           {existingUrls.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
@@ -906,9 +901,7 @@ export default function EditTrade() {
             transition: 'all 0.2s',
           }}>
             <input {...getInputProps()} />
-            <div style={{ fontSize: '32px', marginBottom: '8px' }}>
-              {pasteHint ? '✅' : '📸'}
-            </div>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>{pasteHint ? '✅' : '📸'}</div>
             {pasteHint ? (
               <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#16a34a', fontWeight: 600 }}>
                 이미지가 붙여넣어졌습니다!
@@ -926,33 +919,28 @@ export default function EditTrade() {
           </div>
         </Section>
 
-        {/* ── 뉴스 링크 ──────────────────────────────────────── */}
+        {/* ── 뉴스 링크 ── */}
         <Section title="뉴스 / 공시 링크" isMobile={isMobile}>
           {[0, 1, 2].map(i => (
             <div key={i} style={{ marginBottom: '8px' }}>
               <SectionBox>
-                <input
-                  {...register(`news_link_${i}`)}
-                  className="et-input"
-                  style={inputStyle}
-                  placeholder={`링크 ${i + 1} (https://...)`}
-                  type="url"
-                />
+                <input {...register(`news_link_${i}`)} className="et-input" style={inputStyle}
+                  placeholder={`링크 ${i + 1} (https://...)`} type="url" />
               </SectionBox>
             </div>
           ))}
         </Section>
 
-        {/* ── 저장 버튼 ──────────────────────────────────────── */}
+        {/* ── 저장 버튼 ── */}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
           <button type="button" onClick={() => navigate(-1)} style={{
             padding: '10px 24px', background: '#fff', border: '1px solid #d1d5db',
-            borderRadius: '8px',
-            fontSize: isMobile ? '16px' : '15px',
+            borderRadius: '8px', fontSize: isMobile ? '16px' : '15px',
             cursor: 'pointer', color: '#374151',
           }}>취소</button>
           <button type="submit" disabled={saving} style={{
-            padding: '10px 32px', background: saving ? '#93c5fd' : '#2563eb',
+            padding: '10px 32px',
+            background: saving ? '#93c5fd' : '#2563eb',
             color: '#fff', border: 'none', borderRadius: '8px',
             fontSize: isMobile ? '16px' : '15px', fontWeight: 700,
             cursor: saving ? 'not-allowed' : 'pointer',
