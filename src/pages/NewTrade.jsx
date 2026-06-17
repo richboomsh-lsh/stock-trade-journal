@@ -181,7 +181,7 @@ export default function NewTrade() {
   const fs = (m, d) => isMobile ? m : d
 
   /* ---------- 기본 상태 ---------- */
-  const [market, setMarket] = useState('KOSPI')
+  const [market, setMarket] = useState('코스피')
   const [buyDate, setBuyDate] = useState('')
   const [sellDate, setSellDate] = useState('')
 
@@ -455,7 +455,7 @@ export default function NewTrade() {
           <div style={{ marginTop: '16px' }}>
             <Label isMobile={isMobile}>시장 구분</Label>
             <div style={{ display: 'flex', gap: '8px' }}>
-              {[['KOSPI', '코스피', '#2563eb'], ['KOSDAQ', '코스닥', '#7c3aed']].map(([val, label, color]) => (
+              {[['코스피', '코스피', '#2563eb'], ['코스닥', '코스닥', '#7c3aed']].map(([val, label, color]) => (
                 <button key={val} type="button" onClick={() => setMarket(val)}
                   style={{
                     padding: '8px 28px', borderRadius: '6px', cursor: 'pointer',

@@ -158,6 +158,8 @@ export default function TradeJournal() {
           {filtered.map(trade => {
             const displayRate = trade.net_profit_rate ?? trade.profit_rate
             const displayAmount = trade.net_profit_amount ?? trade.profit_amount
+            const soldQty = (trade.sell_splits || []).reduce((s, x) => s + (Number(x.quantity) || 0), 0)
+            const remainingQty = trade.quantity != null ? trade.quantity - soldQty : null
 
             return (
               <Link key={trade.id} to={`/trade/${trade.id}`} style={{ textDecoration: 'none' }}>
@@ -237,7 +239,16 @@ export default function TradeJournal() {
                         )}
                       </div>
                     ) : (
-                      <span style={{ fontSize: isMobile ? '16px' : '14px', color: '#94a3b8', flexShrink: 0 }}>미완료</span>
+                      <span style={{
+                        padding: '4px 10px',
+                        background: '#fffbeb', color: '#d97706',
+                        border: '1px solid #fde68a',
+                        borderRadius: '14px', fontWeight: 700,
+                        fontSize: isMobile ? '14px' : '13px',
+                        flexShrink: 0, whiteSpace: 'nowrap',
+                      }}>
+                        📌 보유 중{soldQty > 0 && remainingQty != null ? ` (잔여 ${remainingQty.toLocaleString()}주)` : ''}
+                      </span>
                     )}
                   </div>
 

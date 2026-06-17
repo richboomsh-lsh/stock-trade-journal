@@ -99,6 +99,31 @@ function TagList({ label, items, color, isMobile }) {
   )
 }
 
+// 분할 매수/매도 차수별 내역 — buy_splits/sell_splits가 2건 이상일 때만 표시
+function SplitDetail({ title, splits, color, isMobile }) {
+  if (!splits || splits.length <= 1) return null
+  return (
+    <div>
+      <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8', marginBottom: '5px' }}>{title}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+        {splits.map((s, i) => (
+          <div key={i} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: '#f8fafc', border: '1px solid #e2e8f0',
+            borderRadius: '6px', padding: '6px 10px',
+            fontSize: isMobile ? '14px' : '13px',
+          }}>
+            <span style={{ color, fontWeight: 700 }}>{i + 1}차</span>
+            <span style={{ color: '#475569' }}>
+              {(s.quantity ?? 0).toLocaleString()}주 × {formatKRW(s.price)}원
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function Section({ title, children, isMobile }) {
   return (
     <div style={{
@@ -302,6 +327,9 @@ export default function TradeDetail() {
     : '#e2e8f0'
 
   const mBadge = trade.market ? marketBadgeStyle(trade.market) : null
+  const soldQty = (trade.sell_splits || []).reduce((s, x) => s + (Number(x.quantity) || 0), 0)
+  const remainingQty = trade.quantity != null ? trade.quantity - soldQty : null
+  const isHolding = !trade.sell_price
 
   return (
     <div style={{ padding: isMobile ? '0 0 80px' : '0' }}>
@@ -373,6 +401,18 @@ export default function TradeDetail() {
                 color: '#64748b', borderRadius: '6px',
                 fontSize: isMobile ? '16px' : '14px',
               }}>{trade.sector}</span>
+            )}
+            {/* ✅ 보유 중(미완료) 뱃지 */}
+            {isHolding && (
+              <span style={{
+                padding: '2px 10px',
+                background: '#fffbeb', color: '#d97706',
+                border: '1px solid #fde68a',
+                borderRadius: '6px', fontWeight: 700,
+                fontSize: isMobile ? '14px' : '13px',
+              }}>
+                📌 보유 중{soldQty > 0 && remainingQty != null ? ` (잔여 ${remainingQty.toLocaleString()}주)` : ''}
+              </span>
             )}
           </div>
         </div>
@@ -495,12 +535,14 @@ export default function TradeDetail() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <Field label="매수일" value={trade.buy_date} isMobile={isMobile} />
-                <Field label="매수가" value={trade.buy_price ? `${formatKRW(trade.buy_price)}원` : null} isMobile={isMobile} />
+                <Field label={trade.buy_splits && trade.buy_splits.length > 1 ? '평균 매수가' : '매수가'} value={trade.buy_price ? `${formatKRW(trade.buy_price)}원` : null} isMobile={isMobile} />
               </div>
+              <SplitDetail title="분할 매수 내역" splits={trade.buy_splits} color="#2563eb" isMobile={isMobile} />
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <Field label="매도일" value={trade.sell_date} isMobile={isMobile} />
-                <Field label="매도가" value={trade.sell_price ? `${formatKRW(trade.sell_price)}원` : null} isMobile={isMobile} />
+                <Field label={trade.sell_splits && trade.sell_splits.length > 1 ? '평균 매도가' : '매도가'} value={trade.sell_price ? `${formatKRW(trade.sell_price)}원` : null} isMobile={isMobile} />
               </div>
+              <SplitDetail title="분할 매도 내역" splits={trade.sell_splits} color="#7c3aed" isMobile={isMobile} />
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <Field label="수량" value={trade.quantity ? `${trade.quantity.toLocaleString()}주` : null} isMobile={isMobile} />
                 <Field label="포지션 비중" value={trade.position_size ? `${trade.position_size}%` : null} isMobile={isMobile} />
