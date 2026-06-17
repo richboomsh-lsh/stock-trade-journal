@@ -93,6 +93,78 @@ function MultiSelect({ options, selected, onChange, color, isMobile }) {
   )
 }
 
+function fsize(isMobile, mobileVal, desktopVal) {
+  return isMobile ? mobileVal : desktopVal
+}
+
+function SplitRows({ splits, onAdd, onRemove, onChange, maxRows, accentColor, labels, isMobile, inputStyle }) {
+  return (
+    <>
+      {splits.map((row, i) => (
+        <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
+          <div style={{
+            fontSize: fsize(isMobile, '14px', '13px'), color: '#64748b',
+            minWidth: '30px', fontWeight: 700, flexShrink: 0,
+          }}>{i + 1}차</div>
+
+          <input
+            className="nt-input"
+            inputMode="numeric"
+            placeholder="수량"
+            value={row.qtyDisplay}
+            onChange={e => onChange(i, 'qty', e)}
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <input
+            className="nt-input"
+            inputMode="numeric"
+            placeholder={labels.price}
+            value={row.priceDisplay}
+            onChange={e => onChange(i, 'price', e)}
+            style={{ ...inputStyle, flex: 1 }}
+          />
+
+          <button type="button" onClick={() => onRemove(i)}
+            style={{
+              padding: '8px 10px', border: '1px solid #fca5a5',
+              borderRadius: '6px', background: '#fff5f5',
+              color: '#dc2626', cursor: 'pointer', fontSize: '14px',
+              flexShrink: 0,
+            }}>✕</button>
+        </div>
+      ))}
+
+      {splits.length < maxRows && (
+        <button type="button" onClick={onAdd}
+          style={{
+            padding: '7px 16px', border: `1.5px dashed ${accentColor}44`,
+            borderRadius: '6px', background: `${accentColor}0d`,
+            color: accentColor, cursor: 'pointer',
+            fontSize: fsize(isMobile, '14px', '13px'), fontWeight: 500, marginTop: '4px',
+          }}>+ 차수 추가 (최대 {maxRows}차)</button>
+      )}
+    </>
+  )
+}
+
+function SumCard({ items, isMobile }) {
+  return (
+    <div style={{
+      marginTop: '14px', padding: '12px',
+      background: '#fff', border: '1px solid #e2e8f0',
+      borderRadius: '6px', display: 'grid',
+      gridTemplateColumns: '1fr 1fr', gap: '10px',
+    }}>
+      {items.map(({ label, value, color }) => (
+        <div key={label}>
+          <div style={{ fontSize: fsize(isMobile, '13px', '12px'), color: '#64748b' }}>{label}</div>
+          <div style={{ fontWeight: 700, fontSize: fsize(isMobile, '15px', '14px'), color: color || '#1e293b' }}>{value}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /* ─────────────────────────────────────────
    메인 컴포넌트
 ───────────────────────────────────────── */
@@ -348,77 +420,6 @@ export default function NewTrade() {
   const textareaStyle = { ...inputStyle, resize: 'vertical', minHeight: '80px' }
 
   /* ──────────────────────────────────────
-     분할 행 UI 헬퍼
-  ────────────────────────────────────── */
-  function SplitRows({ splits, onAdd, onRemove, onChange, maxRows, accentColor, labels }) {
-    return (
-      <>
-        {splits.map((row, i) => (
-          <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
-            <div style={{
-              fontSize: fs('14px', '13px'), color: '#64748b',
-              minWidth: '30px', fontWeight: 700, flexShrink: 0,
-            }}>{i + 1}차</div>
-
-            <input
-              className="nt-input"
-              inputMode="numeric"
-              placeholder="수량"
-              value={row.qtyDisplay}
-              onChange={e => onChange(i, 'qty', e)}
-              style={{ ...inputStyle, flex: 1 }}
-            />
-            <input
-              className="nt-input"
-              inputMode="numeric"
-              placeholder={labels.price}
-              value={row.priceDisplay}
-              onChange={e => onChange(i, 'price', e)}
-              style={{ ...inputStyle, flex: 1 }}
-            />
-
-            <button type="button" onClick={() => onRemove(i)}
-              style={{
-                padding: '8px 10px', border: '1px solid #fca5a5',
-                borderRadius: '6px', background: '#fff5f5',
-                color: '#dc2626', cursor: 'pointer', fontSize: '14px',
-                flexShrink: 0,
-              }}>✕</button>
-          </div>
-        ))}
-
-        {splits.length < maxRows && (
-          <button type="button" onClick={onAdd}
-            style={{
-              padding: '7px 16px', border: `1.5px dashed ${accentColor}44`,
-              borderRadius: '6px', background: `${accentColor}0d`,
-              color: accentColor, cursor: 'pointer',
-              fontSize: fs('14px', '13px'), fontWeight: 500, marginTop: '4px',
-            }}>+ 차수 추가 (최대 {maxRows}차)</button>
-        )}
-      </>
-    )
-  }
-
-  function SumCard({ items }) {
-    return (
-      <div style={{
-        marginTop: '14px', padding: '12px',
-        background: '#fff', border: '1px solid #e2e8f0',
-        borderRadius: '6px', display: 'grid',
-        gridTemplateColumns: '1fr 1fr', gap: '10px',
-      }}>
-        {items.map(({ label, value, color }) => (
-          <div key={label}>
-            <div style={{ fontSize: fs('13px', '12px'), color: '#64748b' }}>{label}</div>
-            <div style={{ fontWeight: 700, fontSize: fs('15px', '14px'), color: color || '#1e293b' }}>{value}</div>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  /* ──────────────────────────────────────
      렌더
   ────────────────────────────────────── */
   return (
@@ -484,10 +485,12 @@ export default function NewTrade() {
             maxRows={5}
             accentColor="#2563eb"
             labels={{ price: '매수가' }}
+            isMobile={isMobile}
+            inputStyle={inputStyle}
           />
 
           {buy.totalQty > 0 && (
-            <SumCard items={[
+            <SumCard isMobile={isMobile} items={[
               { label: '총 매수수량', value: `${buy.totalQty.toLocaleString()}주` },
               { label: '평균 매수가', value: buy.avgPrice > 0 ? `${Math.round(buy.avgPrice).toLocaleString()}원` : '-' },
               { label: '총 매수금액', value: buy.totalAmount > 0 ? `${Math.round(buy.totalAmount).toLocaleString()}원` : '-' },
@@ -523,10 +526,12 @@ export default function NewTrade() {
             maxRows={5}
             accentColor="#7c3aed"
             labels={{ price: '매도가' }}
+            isMobile={isMobile}
+            inputStyle={inputStyle}
           />
 
           {sell.totalQty > 0 && (
-            <SumCard items={[
+            <SumCard isMobile={isMobile} items={[
               { label: '총 매도수량', value: `${sell.totalQty.toLocaleString()}주` },
               { label: '평균 매도가', value: sell.avgPrice > 0 ? `${Math.round(sell.avgPrice).toLocaleString()}원` : '-' },
               {
