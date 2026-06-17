@@ -19,6 +19,43 @@ const DEFAULT_OPTIONS = {
 
 const GRADES = ['A', 'B', 'C', 'D']
 
+/* ─────────────────────────────────────────
+   분할 매수/매도 유틸 함수
+   ⚠ PATCH 005 원칙: 아래 함수·컴포넌트는 반드시 모듈 최상단에 정의
+   (컴포넌트 내부에 정의하면 매 렌더마다 재생성되어 입력 포커스가 소실됨)
+───────────────────────────────────────── */
+function makeSplitRow() {
+  return { qty: '', price: '', qtyDisplay: '', priceDisplay: '' }
+}
+
+function updateSplitField(splits, index, field, rawValue) {
+  return splits.map((row, i) => {
+    if (i !== index) return row
+    const display = rawValue === '' ? '' : Number(rawValue).toLocaleString()
+    if (field === 'qty') return { ...row, qty: rawValue, qtyDisplay: display }
+    return { ...row, price: rawValue, priceDisplay: display }
+  })
+}
+
+function calcSplitStats(splits) {
+  let totalQty = 0, totalAmount = 0
+  splits.forEach(({ qty, price }) => {
+    const q = Number(qty) || 0
+    const p = Number(price) || 0
+    if (q > 0 && p > 0) { totalQty += q; totalAmount += q * p }
+  })
+  const avgPrice = totalQty > 0 ? totalAmount / totalQty : 0
+  return { totalQty, totalAmount, avgPrice }
+}
+
+// 혹시 'KOSPI'/'KOSDAQ'(영문)으로 저장된 데이터가 있어도 한글로 정규화해서 불러옴
+// (저장 시에는 항상 한글 '코스피'/'코스닥'로 저장됨 — 명세서 8-13 규칙)
+function normalizeMarket(m) {
+  if (m === 'KOSPI') return '코스피'
+  if (m === 'KOSDAQ') return '코스닥'
+  return m || ''
+}
+
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 640)
   useEffect(() => {
@@ -106,16 +143,74 @@ function TagSelector({ options, selected, onChange, color = '#2563eb', isMobile 
   )
 }
 
-function toComma(val) {
-  if (val === '' || val === null || val === undefined) return ''
-  const num = String(val).replace(/[^0-9]/g, '')
-  if (num === '') return ''
-  return Number(num).toLocaleString()
+// ── 분할 매수/매도 행 입력 컴포넌트 (모듈 최상단 정의 — 포커스 버그 방지) ──
+function SplitRows({ splits, onAdd, onRemove, onChange, maxRows, accentColor, labels, isMobile, inputStyle }) {
+  return (
+    <>
+      {splits.map((row, i) => (
+        <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
+          <div style={{
+            fontSize: isMobile ? '14px' : '13px', color: '#64748b',
+            minWidth: '30px', fontWeight: 700, flexShrink: 0,
+          }}>{i + 1}차</div>
+
+          <input
+            className="et-input"
+            inputMode="numeric"
+            placeholder="수량"
+            value={row.qtyDisplay}
+            onChange={e => onChange(i, 'qty', e)}
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <input
+            className="et-input"
+            inputMode="numeric"
+            placeholder={labels.price}
+            value={row.priceDisplay}
+            onChange={e => onChange(i, 'price', e)}
+            style={{ ...inputStyle, flex: 1 }}
+          />
+
+          <button type="button" onClick={() => onRemove(i)}
+            style={{
+              padding: '8px 10px', border: '1px solid #fca5a5',
+              borderRadius: '6px', background: '#fff5f5',
+              color: '#dc2626', cursor: 'pointer', fontSize: '14px',
+              flexShrink: 0,
+            }}>✕</button>
+        </div>
+      ))}
+
+      {splits.length < maxRows && (
+        <button type="button" onClick={onAdd}
+          style={{
+            padding: '7px 16px', border: `1.5px dashed ${accentColor}44`,
+            borderRadius: '6px', background: `${accentColor}0d`,
+            color: accentColor, cursor: 'pointer',
+            fontSize: isMobile ? '14px' : '13px', fontWeight: 500, marginTop: '4px',
+          }}>+ 차수 추가 (최대 {maxRows}차)</button>
+      )}
+    </>
+  )
 }
 
-function fromComma(val) {
-  if (val === '' || val === null || val === undefined) return ''
-  return String(val).replace(/[^0-9]/g, '')
+// ── 분할 매수/매도 합계 표시 카드 (모듈 최상단 정의) ──
+function SumCard({ items, isMobile }) {
+  return (
+    <div style={{
+      marginTop: '14px', padding: '12px',
+      background: '#fff', border: '1px solid #e2e8f0',
+      borderRadius: '6px', display: 'grid',
+      gridTemplateColumns: '1fr 1fr', gap: '10px',
+    }}>
+      {items.map(({ label, value, color }) => (
+        <div key={label}>
+          <div style={{ fontSize: isMobile ? '13px' : '12px', color: '#64748b' }}>{label}</div>
+          <div style={{ fontWeight: 700, fontSize: isMobile ? '15px' : '14px', color: color || '#1e293b' }}>{value}</div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // 수익 색상: 양수=빨강, 음수=파랑, 0=회색
@@ -148,13 +243,12 @@ export default function EditTrade() {
     sell_fee_rate: 0.00015,
     tax_rate: 0.0018,
   })
+  // ✅ PATCH 006 신규: 포지션 비중 자동계산을 위한 총자산 값
+  const [totalAssets, setTotalAssets] = useState(0)
 
-  const [buyPriceRaw, setBuyPriceRaw] = useState('')
-  const [sellPriceRaw, setSellPriceRaw] = useState('')
-  const [quantityRaw, setQuantityRaw] = useState('')
-  const [buyPriceDisplay, setBuyPriceDisplay] = useState('')
-  const [sellPriceDisplay, setSellPriceDisplay] = useState('')
-  const [quantityDisplay, setQuantityDisplay] = useState('')
+  // ✅ PATCH 006 신규: 매수가/매도가/수량 수동입력 → 분할 매수·매도 입력으로 전환
+  const [buySplits, setBuySplits] = useState([makeSplitRow()])
+  const [sellSplits, setSellSplits] = useState([makeSplitRow()])
 
   const [existingImages, setExistingImages] = useState([])
   const [existingUrls, setExistingUrls] = useState([])
@@ -196,42 +290,62 @@ export default function EditTrade() {
   const buyDate = watch('buy_date')
   const sellDate = watch('sell_date')
 
-  const buyPrice  = buyPriceRaw  !== '' ? Number(buyPriceRaw)  : null
-  const sellPrice = sellPriceRaw !== '' ? Number(sellPriceRaw) : null
-  const quantity  = quantityRaw  !== '' ? Number(quantityRaw)  : null
+  /* ──────────────────────────────────────
+     분할 매수/매도 계산값 (PATCH 006)
+  ────────────────────────────────────── */
+  const buyStats = calcSplitStats(buySplits)
+  const sellStats = calcSplitStats(sellSplits)
 
-  const profitAmount = (buyPrice !== null && sellPrice !== null && quantity !== null)
-    ? calcProfitAmount(buyPrice, sellPrice, quantity) : null
-  const profitRate = (buyPrice !== null && sellPrice !== null)
-    ? calcProfitRate(buyPrice, sellPrice) : null
-  const holdingDays = buyDate && sellDate
+  const remainingQty = buyStats.totalQty - sellStats.totalQty
+  const isComplete = buyStats.totalQty > 0 && remainingQty <= 0
+
+  // 포지션 비중 = 총 매수금액 ÷ 총자산 × 100 (Settings의 total_assets 사용)
+  const totalAssetsNum = Number(totalAssets) || 0
+  const positionSize = (buyStats.totalAmount > 0 && totalAssetsNum > 0)
+    ? (buyStats.totalAmount / totalAssetsNum * 100) : 0
+
+  // 수익금/수익률은 "매도된 수량" 기준으로 계산 (잔여 수량 제외)
+  const profitAmount = (sellStats.totalQty > 0 && buyStats.avgPrice > 0)
+    ? calcProfitAmount(buyStats.avgPrice, sellStats.avgPrice, sellStats.totalQty) : null
+  const profitRate = (buyStats.avgPrice > 0 && sellStats.totalQty > 0)
+    ? calcProfitRate(buyStats.avgPrice, sellStats.avgPrice) : null
+  // 보유기간은 매도 완료(전량 매도) 시에만 계산
+  const holdingDays = (buyDate && sellDate && isComplete)
     ? calcHoldingDays(buyDate, sellDate) : null
 
-  // ✅ 수정: DB 저장값(소수)을 그대로 사용 — / 100 제거
-  const fee = (buyPrice !== null && sellPrice !== null && quantity !== null)
+  // 수수료·세금은 매도 완료(전량 매도) 시에만 확정 — 매수/매도 "합산 금액" 기준
+  const fee = (isComplete && buyStats.totalAmount > 0)
     ? Math.round(
-        buyPrice  * quantity * feeSettings.buy_fee_rate +
-        sellPrice * quantity * feeSettings.sell_fee_rate
+        buyStats.totalAmount  * feeSettings.buy_fee_rate +
+        sellStats.totalAmount * feeSettings.sell_fee_rate
       )
     : null
 
-  // ✅ 수정: 세금 = 매도금액 × 세율 (수익 여부와 무관하게 항상 발생)
-  const tax = (sellPrice !== null && quantity !== null)
-    ? Math.round(sellPrice * quantity * feeSettings.tax_rate)
+  // 세금 = 매도 합산금액 × 세율 (수익 여부와 무관하게 항상 발생)
+  const tax = (isComplete && sellStats.totalAmount > 0)
+    ? Math.round(sellStats.totalAmount * feeSettings.tax_rate)
     : null
 
   const netProfitAmount = (profitAmount !== null && fee !== null && tax !== null)
     ? profitAmount - fee - tax
     : null
 
-  const netProfitRate = (netProfitAmount !== null && buyPrice !== null && quantity !== null && buyPrice * quantity !== 0)
-    ? (netProfitAmount / (buyPrice * quantity)) * 100
+  const netProfitRate = (netProfitAmount !== null && buyStats.totalAmount > 0)
+    ? (netProfitAmount / buyStats.totalAmount) * 100
     : null
 
-  const handleNumInput = (rawSetter, displaySetter) => (e) => {
-    const digits = fromComma(e.target.value)
-    rawSetter(digits)
-    displaySetter(digits === '' ? '' : Number(digits).toLocaleString())
+  /* ──────────────────────────────────────
+     분할 입력 행 변경 핸들러
+  ────────────────────────────────────── */
+  function handleBuySplitChange(i, field, e) {
+    const raw = e.target.value.replace(/,/g, '')
+    if (raw !== '' && !/^\d+$/.test(raw)) return
+    setBuySplits(updateSplitField(buySplits, i, field, raw))
+  }
+  function handleSellSplitChange(i, field, e) {
+    const raw = e.target.value.replace(/,/g, '')
+    if (raw !== '' && !/^\d+$/.test(raw)) return
+    setSellSplits(updateSplitField(sellSplits, i, field, raw))
   }
 
   useEffect(() => {
@@ -257,7 +371,7 @@ export default function EditTrade() {
   const loadFeeSettings = async () => {
     const { data, error } = await supabase
       .from('app_settings')
-      .select('buy_fee_rate, sell_fee_rate, tax_rate')
+      .select('buy_fee_rate, sell_fee_rate, tax_rate, total_assets')
       .eq('id', 1)
       .single()
     if (!error && data) {
@@ -267,6 +381,7 @@ export default function EditTrade() {
         sell_fee_rate: Number(data.sell_fee_rate) || 0.00015,
         tax_rate:      Number(data.tax_rate)      || 0.0018,
       })
+      setTotalAssets(Number(data.total_assets) || 0)
     }
   }
 
@@ -280,27 +395,40 @@ export default function EditTrade() {
     }
     const fields = [
       'stock_name', 'buy_date', 'sell_date',
-      'position_size', 'sector', 'trade_style', 'market_condition',
+      'sector', 'trade_style', 'market_condition',
       'trade_grade', 'sell_reason',
       'material_context', 'entry_reason', 'stop_loss_plan', 'trade_log',
       'reflection_good', 'reflection_bad', 'reflection_next',
     ]
     fields.forEach(f => setValue(f, data[f] || ''))
 
-    if (data.buy_price) {
-      const v = String(Math.round(data.buy_price))
-      setBuyPriceRaw(v); setBuyPriceDisplay(Number(v).toLocaleString())
-    }
-    if (data.sell_price) {
-      const v = String(Math.round(data.sell_price))
-      setSellPriceRaw(v); setSellPriceDisplay(Number(v).toLocaleString())
-    }
-    if (data.quantity) {
-      const v = String(data.quantity)
-      setQuantityRaw(v); setQuantityDisplay(Number(v).toLocaleString())
-    }
+    // ✅ PATCH 006: 분할 매수/매도 데이터 불러오기
+    // buy_splits/sell_splits가 있으면 그대로 사용, 없으면(과거 단일 입력 데이터)
+    // 기존 buy_price/sell_price/quantity로 1차 단일 행을 구성해 하위 호환 처리
+    const buySplitsFromDb = (data.buy_splits && data.buy_splits.length > 0)
+      ? data.buy_splits
+      : (data.quantity && data.buy_price ? [{ quantity: data.quantity, price: data.buy_price }] : [])
+    const sellSplitsFromDb = (data.sell_splits && data.sell_splits.length > 0)
+      ? data.sell_splits
+      : (data.quantity && data.sell_price ? [{ quantity: data.quantity, price: data.sell_price }] : [])
 
-    setMarket(data.market || '')
+    const toRows = (arr) => arr.length > 0
+      ? arr.map(r => {
+          const qtyStr = String(Math.round(Number(r.quantity)))
+          const priceStr = String(Math.round(Number(r.price)))
+          return {
+            qty: qtyStr,
+            price: priceStr,
+            qtyDisplay: Number(qtyStr).toLocaleString(),
+            priceDisplay: Number(priceStr).toLocaleString(),
+          }
+        })
+      : [makeSplitRow()]
+
+    setBuySplits(toRows(buySplitsFromDb))
+    setSellSplits(toRows(sellSplitsFromDb))
+
+    setMarket(normalizeMarket(data.market))
     setThemes(data.themes || [])
     setEmotionBefore(data.emotion_before || [])
     setEmotionAfter(data.emotion_after || [])
@@ -367,7 +495,7 @@ export default function EditTrade() {
   }
 
   const onSubmit = async (formData) => {
-    if (!buyPriceRaw) { alert('매수가를 입력해주세요.'); return }
+    if (buyStats.totalQty === 0) { alert('매수 정보(수량, 매수가)를 입력해주세요.'); return }
 
     setSaving(true)
     setUploadProgress(true)
@@ -391,48 +519,30 @@ export default function EditTrade() {
         .map(i => formData[`news_link_${i}`])
         .filter(l => l && l.trim())
 
-      const bPrice = buyPrice  !== null ? buyPrice  : null
-      const sPrice = sellPrice !== null ? sellPrice : null
-      const qty    = quantity  !== null ? quantity  : null
-
-      const pAmount = (bPrice && sPrice && qty) ? calcProfitAmount(bPrice, sPrice, qty) : null
-      const pRate   = (bPrice && sPrice)         ? calcProfitRate(bPrice, sPrice)        : null
-      const hDays   = buyDate && sellDate         ? calcHoldingDays(buyDate, sellDate)    : null
-
-      // ✅ 수정: DB 저장값(소수) 그대로 사용, / 100 제거
-      const calcFee = (bPrice && sPrice && qty)
-        ? Math.round(
-            bPrice * qty * feeSettings.buy_fee_rate +
-            sPrice * qty * feeSettings.sell_fee_rate
-          )
-        : null
-      // ✅ 수정: 세금 = 매도금액 × 세율 (수익 여부 무관)
-      const calcTax = (sPrice && qty)
-        ? Math.round(sPrice * qty * feeSettings.tax_rate)
-        : null
-      const calcNet = (pAmount !== null && calcFee !== null && calcTax !== null)
-        ? pAmount - calcFee - calcTax
-        : null
-      const calcNetRate = (calcNet !== null && bPrice && qty && bPrice * qty !== 0)
-        ? (calcNet / (bPrice * qty)) * 100
-        : null
+      // ✅ PATCH 006: 분할 매수/매도 유효 행만 추출
+      const buySplitsClean = buySplits
+        .filter(r => r.qty && r.price)
+        .map(r => ({ quantity: Number(r.qty), price: Number(r.price) }))
+      const sellSplitsClean = sellSplits
+        .filter(r => r.qty && r.price)
+        .map(r => ({ quantity: Number(r.qty), price: Number(r.price) }))
 
       const payload = {
         stock_name:     formData.stock_name,
         market:         market || null,
         buy_date:       formData.buy_date,
-        buy_price:      bPrice,
-        sell_date:      formData.sell_date || null,
-        sell_price:     sPrice,
-        quantity:       qty,
-        position_size:  formData.position_size ? Number(formData.position_size) : null,
-        profit_amount:  pAmount,
-        profit_rate:    pRate,
-        holding_days:   hDays,
-        fee:            calcFee,
-        tax:            calcTax,
-        net_profit_amount: calcNet !== null ? Math.round(calcNet) : null,
-        net_profit_rate:   calcNetRate !== null ? parseFloat(calcNetRate.toFixed(4)) : null,
+        buy_price:      buyStats.avgPrice > 0 ? parseFloat(buyStats.avgPrice.toFixed(2)) : null,
+        sell_date:      isComplete && formData.sell_date ? formData.sell_date : null,
+        sell_price:     isComplete && sellStats.avgPrice > 0 ? parseFloat(sellStats.avgPrice.toFixed(2)) : null,
+        quantity:       buyStats.totalQty || null,
+        position_size:  positionSize > 0 ? parseFloat(positionSize.toFixed(2)) : null,
+        profit_amount:  profitAmount !== null ? parseFloat(profitAmount.toFixed(2)) : null,
+        profit_rate:    profitRate   !== null ? parseFloat(profitRate.toFixed(4))   : null,
+        holding_days:   holdingDays,
+        fee:            fee,
+        tax:            tax,
+        net_profit_amount: netProfitAmount !== null ? Math.round(netProfitAmount) : null,
+        net_profit_rate:   netProfitRate   !== null ? parseFloat(netProfitRate.toFixed(4)) : null,
         sector:            formData.sector         || null,
         themes:            themes.length > 0       ? themes       : null,
         trade_style:       formData.trade_style    || null,
@@ -452,6 +562,9 @@ export default function EditTrade() {
         reflection_next:   formData.reflection_next || null,
         chart_images:      finalImagePaths.length > 0 ? finalImagePaths : null,
         news_links:        newsLinks.length > 0 ? newsLinks : null,
+        // ✅ PATCH 006 신규 필드
+        buy_splits:        buySplitsClean.length > 0  ? buySplitsClean  : null,
+        sell_splits:       sellSplitsClean.length > 0 ? sellSplitsClean : null,
         updated_at:        new Date().toISOString(),
       }
 
@@ -609,7 +722,7 @@ export default function EditTrade() {
             </SectionBox>
           </div>
 
-          <div style={{ marginBottom: '12px' }}>
+          <div>
             {labelEl('시장 구분')}
             <SectionBox>
               <div style={{ display: 'flex', gap: '8px' }}>
@@ -631,64 +744,108 @@ export default function EditTrade() {
               </div>
             </SectionBox>
           </div>
+        </Section>
 
-          <Row>
-            <div>
-              {labelEl('매수일', true)}
-              <SectionBox>
-                <input type="date" {...register('buy_date', { required: true })}
-                  className="et-input" style={inputStyle} />
-              </SectionBox>
-            </div>
-            <div>
-              {labelEl('매수가 (원)', true)}
-              <SectionBox>
-                <input type="text" inputMode="numeric" className="et-input" style={inputStyle}
-                  value={buyPriceDisplay}
-                  onChange={handleNumInput(setBuyPriceRaw, setBuyPriceDisplay)}
-                  placeholder="0" />
-              </SectionBox>
-            </div>
-          </Row>
+        {/* ── 분할 매수 (PATCH 006 신규) ── */}
+        <Section title="분할 매수" isMobile={isMobile}>
+          <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#64748b', marginBottom: '12px' }}>
+            수량과 매수가를 차수별로 입력하세요. 평균 매수가·총 수량이 자동 계산됩니다.
+          </div>
+          <SectionBox>
+            <SplitRows
+              splits={buySplits}
+              onAdd={() => setBuySplits([...buySplits, makeSplitRow()])}
+              onRemove={i => setBuySplits(buySplits.length === 1 ? [makeSplitRow()] : buySplits.filter((_, idx) => idx !== i))}
+              onChange={handleBuySplitChange}
+              maxRows={5}
+              accentColor="#2563eb"
+              labels={{ price: '매수가' }}
+              isMobile={isMobile}
+              inputStyle={inputStyle}
+            />
 
-          <Row>
-            <div>
-              {labelEl('매도일')}
-              <SectionBox>
-                <input type="date" {...register('sell_date')}
-                  className="et-input" style={inputStyle} />
-              </SectionBox>
-            </div>
-            <div>
-              {labelEl('매도가 (원)')}
-              <SectionBox>
-                <input type="text" inputMode="numeric" className="et-input" style={inputStyle}
-                  value={sellPriceDisplay}
-                  onChange={handleNumInput(setSellPriceRaw, setSellPriceDisplay)}
-                  placeholder="0" />
-              </SectionBox>
-            </div>
-          </Row>
+            {buyStats.totalQty > 0 && (
+              <SumCard isMobile={isMobile} items={[
+                { label: '총 매수수량', value: `${buyStats.totalQty.toLocaleString()}주` },
+                { label: '평균 매수가', value: buyStats.avgPrice > 0 ? `${Math.round(buyStats.avgPrice).toLocaleString()}원` : '-' },
+                { label: '총 매수금액', value: buyStats.totalAmount > 0 ? `${Math.round(buyStats.totalAmount).toLocaleString()}원` : '-' },
+                {
+                  label: '포지션 비중',
+                  value: positionSize > 0
+                    ? `${positionSize.toFixed(1)}%`
+                    : totalAssetsNum > 0 ? '계산 중' : '설정에서 자산 입력 필요',
+                  color: positionSize > 0 ? '#2563eb' : '#94a3b8',
+                },
+              ]} />
+            )}
+          </SectionBox>
 
-          <Row>
-            <div>
-              {labelEl('수량 (주)')}
-              <SectionBox>
-                <input type="text" inputMode="numeric" className="et-input" style={inputStyle}
-                  value={quantityDisplay}
-                  onChange={handleNumInput(setQuantityRaw, setQuantityDisplay)}
-                  placeholder="0" />
-              </SectionBox>
-            </div>
-            <div>
-              {labelEl('포지션 비중 (%)')}
-              <SectionBox>
-                <input type="number" {...register('position_size')}
-                  className="et-input" style={inputStyle}
-                  placeholder="0~100" min="0" max="100" />
-              </SectionBox>
-            </div>
-          </Row>
+          <div style={{ marginTop: '12px' }}>
+            {labelEl('매수일', true)}
+            <SectionBox>
+              <input type="date" {...register('buy_date', { required: true })}
+                className="et-input" style={inputStyle} />
+            </SectionBox>
+          </div>
+        </Section>
+
+        {/* ── 분할 매도 (PATCH 006 신규) ── */}
+        <Section title="분할 매도" isMobile={isMobile}>
+          <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#64748b', marginBottom: '12px' }}>
+            매도가 없으면 비워두세요. 잔여 수량이 0이 되면 완료 거래로 처리됩니다.
+          </div>
+          <SectionBox>
+            <SplitRows
+              splits={sellSplits}
+              onAdd={() => setSellSplits([...sellSplits, makeSplitRow()])}
+              onRemove={i => setSellSplits(sellSplits.length === 1 ? [makeSplitRow()] : sellSplits.filter((_, idx) => idx !== i))}
+              onChange={handleSellSplitChange}
+              maxRows={5}
+              accentColor="#7c3aed"
+              labels={{ price: '매도가' }}
+              isMobile={isMobile}
+              inputStyle={inputStyle}
+            />
+
+            {sellStats.totalQty > 0 && (
+              <SumCard isMobile={isMobile} items={[
+                { label: '총 매도수량', value: `${sellStats.totalQty.toLocaleString()}주` },
+                { label: '평균 매도가', value: sellStats.avgPrice > 0 ? `${Math.round(sellStats.avgPrice).toLocaleString()}원` : '-' },
+                {
+                  label: '잔여 수량',
+                  value: buyStats.totalQty > 0
+                    ? `${remainingQty.toLocaleString()}주 ${isComplete ? '(매도 완료)' : '(보유 중)'}`
+                    : '-',
+                  color: isComplete ? '#16a34a' : '#d97706',
+                },
+                {
+                  label: '현재 매입금액',
+                  value: remainingQty > 0 && buyStats.avgPrice > 0
+                    ? `${Math.round(remainingQty * buyStats.avgPrice).toLocaleString()}원`
+                    : isComplete ? '0원' : '-',
+                },
+              ]} />
+            )}
+
+            {sellStats.totalQty > 0 && !isComplete && buyStats.totalQty > 0 && (
+              <div style={{
+                marginTop: '10px', padding: '8px 12px',
+                background: '#fffbeb', border: '1px solid #fde68a',
+                borderRadius: '6px', fontSize: isMobile ? '14px' : '13px', color: '#92400e',
+              }}>
+                ⚠ 잔여 수량({remainingQty.toLocaleString()}주)이 있어 <b>미완료 거래</b>로 저장됩니다.
+                수익·순수익은 전체 매도 완료 후 계산됩니다.
+              </div>
+            )}
+          </SectionBox>
+
+          <div style={{ marginTop: '12px' }}>
+            {labelEl('매도일')}
+            <SectionBox>
+              <input type="date" {...register('sell_date')}
+                className="et-input" style={inputStyle} />
+            </SectionBox>
+          </div>
         </Section>
 
         {/* ── 분류 정보 ── */}
