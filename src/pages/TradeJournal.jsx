@@ -18,8 +18,9 @@ export default function TradeJournal() {
   const [trades, setTrades] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState({ sector: '', trade_style: '', trade_grade: '', market: '' })
+  const [opts, setOpts] = useState({ sector: [], trade_style: [] })
 
-  useEffect(() => { fetchTrades() }, [])
+  useEffect(() => { fetchTrades(); fetchOptions() }, [])
 
   const fetchTrades = async () => {
     setLoading(true)
@@ -27,6 +28,21 @@ export default function TradeJournal() {
       .from('trades').select('*').order('buy_date', { ascending: false })
     if (!error) setTrades(data || [])
     setLoading(false)
+  }
+
+  const fetchOptions = async () => {
+    const { data, error } = await supabase
+      .from('dropdown_options')
+      .select('category, label')
+      .in('category', ['sector', 'trade_style'])
+      .order('sort_order', { ascending: true })
+    if (!error && data) {
+      const grouped = { sector: [], trade_style: [] }
+      data.forEach(d => {
+        if (grouped[d.category]) grouped[d.category].push(d.label)
+      })
+      setOpts(grouped)
+    }
   }
 
   const deleteTrade = async (id, e) => {
@@ -116,13 +132,13 @@ export default function TradeJournal() {
         </select>
         <select style={sel} value={filter.sector} onChange={e => setFilter({ ...filter, sector: e.target.value })}>
           <option value="">전체 섹터</option>
-          {['에너지','반도체','바이오','금융','소비재','화학','철강','건설','운송','기타'].map(s => (
+          {opts.sector.map(s => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
         <select style={sel} value={filter.trade_style} onChange={e => setFilter({ ...filter, trade_style: e.target.value })}>
-          <option value="">전체 방식</option>
-          {['눌림목','상한가따라잡기','돌파매수','역추세','스캘핑','기타'].map(s => (
+          <option value="">매매방식</option>
+          {opts.trade_style.map(s => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
