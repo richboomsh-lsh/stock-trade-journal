@@ -530,7 +530,7 @@ export default function NewTrade() {
             inputStyle={inputStyle}
           />
 
-          {sell.totalQty > 0 && (
+          {buy.totalQty > 0 && (
             <SumCard isMobile={isMobile} items={[
               { label: '총 매도수량', value: `${sell.totalQty.toLocaleString()}주` },
               { label: '평균 매도가', value: sell.avgPrice > 0 ? `${Math.round(sell.avgPrice).toLocaleString()}원` : '-' },

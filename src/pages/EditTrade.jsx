@@ -807,7 +807,7 @@ export default function EditTrade() {
               inputStyle={inputStyle}
             />
 
-            {sellStats.totalQty > 0 && (
+            {buyStats.totalQty > 0 && (
               <SumCard isMobile={isMobile} items={[
                 { label: '총 매도수량', value: `${sellStats.totalQty.toLocaleString()}주` },
                 { label: '평균 매도가', value: sellStats.avgPrice > 0 ? `${Math.round(sellStats.avgPrice).toLocaleString()}원` : '-' },
