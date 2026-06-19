@@ -176,6 +176,11 @@ export default function TradeJournal() {
             const displayAmount = trade.net_profit_amount ?? trade.profit_amount
             const soldQty = (trade.sell_splits || []).reduce((s, x) => s + (Number(x.quantity) || 0), 0)
             const remainingQty = trade.quantity != null ? trade.quantity - soldQty : null
+            const isHolding = !trade.sell_price
+            // ✅ 현재 매입금액 = 잔여 수량 × 평균 매수가 (8-22 패턴과 동일한 계산)
+            const currentHoldingValue = (isHolding && remainingQty != null && trade.buy_price != null)
+              ? remainingQty * trade.buy_price
+              : null
 
             return (
               <Link key={trade.id} to={`/trade/${trade.id}`} style={{ textDecoration: 'none' }}>
@@ -255,16 +260,23 @@ export default function TradeJournal() {
                         )}
                       </div>
                     ) : (
-                      <span style={{
-                        padding: '4px 10px',
-                        background: '#fffbeb', color: '#d97706',
-                        border: '1px solid #fde68a',
-                        borderRadius: '14px', fontWeight: 700,
-                        fontSize: isMobile ? '14px' : '13px',
-                        flexShrink: 0, whiteSpace: 'nowrap',
-                      }}>
-                        📌 보유 중{soldQty > 0 && remainingQty != null ? ` (잔여 ${remainingQty.toLocaleString()}주)` : ''}
-                      </span>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <span style={{
+                          padding: '4px 10px',
+                          background: '#fffbeb', color: '#d97706',
+                          border: '1px solid #fde68a',
+                          borderRadius: '14px', fontWeight: 700,
+                          fontSize: isMobile ? '14px' : '13px',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          📌 보유 중{soldQty > 0 && remainingQty != null ? ` (잔여 ${remainingQty.toLocaleString()}주)` : ''}
+                        </span>
+                        {currentHoldingValue != null && (
+                          <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#b45309', marginTop: '4px', whiteSpace: 'nowrap' }}>
+                            매입금액 {formatKRW(currentHoldingValue)}원
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
 

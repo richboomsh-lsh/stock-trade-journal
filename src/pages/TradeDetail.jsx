@@ -330,6 +330,10 @@ export default function TradeDetail() {
   const soldQty = (trade.sell_splits || []).reduce((s, x) => s + (Number(x.quantity) || 0), 0)
   const remainingQty = trade.quantity != null ? trade.quantity - soldQty : null
   const isHolding = !trade.sell_price
+  // ✅ 현재 매입금액 = 잔여 수량 × 평균 매수가 (8-22 패턴과 동일한 계산)
+  const currentHoldingValue = (isHolding && remainingQty != null && trade.buy_price != null)
+    ? remainingQty * trade.buy_price
+    : null
 
   return (
     <div style={{ padding: isMobile ? '0 0 80px' : '0' }}>
@@ -412,6 +416,18 @@ export default function TradeDetail() {
                 fontSize: isMobile ? '14px' : '13px',
               }}>
                 📌 보유 중{soldQty > 0 && remainingQty != null ? ` (잔여 ${remainingQty.toLocaleString()}주)` : ''}
+              </span>
+            )}
+            {/* ✅ 현재 매입금액 — 보유 중 뱃지 옆 별도 박스 */}
+            {currentHoldingValue != null && (
+              <span style={{
+                padding: '2px 10px',
+                background: '#fffbeb', color: '#b45309',
+                border: '1px solid #fde68a',
+                borderRadius: '6px', fontWeight: 600,
+                fontSize: isMobile ? '14px' : '13px',
+              }}>
+                매입금액 {formatKRW(currentHoldingValue)}원
               </span>
             )}
           </div>
