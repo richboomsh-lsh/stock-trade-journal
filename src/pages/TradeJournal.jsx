@@ -293,7 +293,17 @@ export default function TradeJournal() {
                       <span style={{ color: '#94a3b8' }}>
                         {trade.holding_days != null ? `보유 ${trade.holding_days}일` : ''}
                         {trade.quantity ? ` · ${trade.quantity.toLocaleString()}주` : ''}
+                        {isHolding && trade.position_size != null ? ` · 포지션 ${Number(trade.position_size).toFixed(1)}%` : ''}
                       </span>
+                      {/* ✅ 완료 거래: 총 매수금액 / 총 매도금액 표시 */}
+                      {!isHolding && trade.buy_price != null && trade.quantity != null && (
+                        <span style={{ color: '#94a3b8' }}>
+                          매수금액 {formatKRW(trade.buy_price * trade.quantity)}원
+                          {trade.sell_price != null && (
+                            <> · 매도금액 {formatKRW(trade.sell_price * trade.quantity)}원</>
+                          )}
+                        </span>
+                      )}
                     </div>
                     <button
                       onClick={(e) => deleteTrade(trade.id, e)}
