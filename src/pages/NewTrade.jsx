@@ -423,7 +423,7 @@ export default function NewTrade() {
      렌더
   ────────────────────────────────────── */
   return (
-    <div style={{ maxWidth: '720px', margin: '0 auto', padding: isMobile ? '16px' : '24px 24px 60px' }}>
+    <div style={{ maxWidth: isMobile ? '720px' : '1100px', margin: '0 auto', padding: isMobile ? '16px' : '24px 24px 60px' }}>
       <style>{`
         .nt-input:focus {
           outline: none;
@@ -441,36 +441,51 @@ export default function NewTrade() {
 
       <form onSubmit={handleSubmit(onSubmit)}>
 
-        {/* ── 기본 정보 ── */}
+        {/* ── 기본 정보 (PC: 2단, 모바일: 1단) ── */}
         <SectionTitle>기본 정보</SectionTitle>
         <SectionBox>
-          <Label isMobile={isMobile}>종목명 *</Label>
-          <input
-            {...register('stock_name', { required: true })}
-            className="nt-input"
-            placeholder="예: 삼성전자"
-            style={inputStyle}
-          />
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+            gap: isMobile ? '16px' : '20px',
+          }}>
+            <div>
+              <Label isMobile={isMobile}>종목명 *</Label>
+              <input
+                {...register('stock_name', { required: true })}
+                className="nt-input"
+                placeholder="예: 삼성전자"
+                style={inputStyle}
+              />
+            </div>
 
-          <div style={{ marginTop: '16px' }}>
-            <Label isMobile={isMobile}>시장 구분</Label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {[['코스피', '코스피', '#2563eb'], ['코스닥', '코스닥', '#7c3aed']].map(([val, label, color]) => (
-                <button key={val} type="button" onClick={() => setMarket(val)}
-                  style={{
-                    padding: '8px 28px', borderRadius: '6px', cursor: 'pointer',
-                    border: `1.5px solid ${market === val ? color : '#d1d5db'}`,
-                    background: market === val ? color : '#fff',
-                    color: market === val ? '#fff' : '#374151',
-                    fontWeight: market === val ? 700 : 400,
-                    fontSize: fs('16px', '14px'),
-                  }}>{label}</button>
-              ))}
+            <div>
+              <Label isMobile={isMobile}>시장 구분</Label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {[['코스피', '코스피', '#2563eb'], ['코스닥', '코스닥', '#7c3aed']].map(([val, label, color]) => (
+                  <button key={val} type="button" onClick={() => setMarket(val)}
+                    style={{
+                      flex: 1, padding: '8px 0', borderRadius: '6px', cursor: 'pointer',
+                      border: `1.5px solid ${market === val ? color : '#d1d5db'}`,
+                      background: market === val ? color : '#fff',
+                      color: market === val ? '#fff' : '#374151',
+                      fontWeight: market === val ? 700 : 400,
+                      fontSize: fs('16px', '14px'),
+                    }}>{label}</button>
+                ))}
+              </div>
             </div>
           </div>
         </SectionBox>
 
-        {/* ── 분할 매수 ── */}
+        {/* ── 분할 매수 / 분할 매도 (PC: 2단, 모바일: 1단) ── */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+          gap: isMobile ? '0' : '20px',
+          alignItems: 'start',
+        }}>
+        <div>
         <SectionTitle>분할 매수</SectionTitle>
         <SectionBox>
           <div style={{ fontSize: fs('14px', '13px'), color: '#64748b', marginBottom: '12px' }}>
@@ -510,7 +525,9 @@ export default function NewTrade() {
               onChange={e => setBuyDate(e.target.value)} style={inputStyle} />
           </div>
         </SectionBox>
+        </div>
 
+        <div>
         {/* ── 분할 매도 ── */}
         <SectionTitle>분할 매도</SectionTitle>
         <SectionBox>
@@ -567,6 +584,8 @@ export default function NewTrade() {
               onChange={e => setSellDate(e.target.value)} style={inputStyle} />
           </div>
         </SectionBox>
+        </div>
+        </div>
 
         {/* ── 수익 미리보기 ── */}
         {buy.totalQty > 0 && (
