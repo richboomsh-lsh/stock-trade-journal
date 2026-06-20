@@ -45,8 +45,10 @@ function profitColor(rate) {
 function SectionTitle({ children }) {
   return (
     <div style={{
-      fontWeight: 700, fontSize: '15px', color: '#1e293b',
-      margin: '28px 0 10px',
+      fontWeight: 700, fontSize: '16px', color: '#1e3a8a',
+      margin: '28px 0 12px', padding: '9px 14px',
+      background: '#eff6ff', borderLeft: '4px solid #2563eb',
+      borderRadius: '6px', letterSpacing: '0.2px',
     }}>{children}</div>
   )
 }
@@ -63,8 +65,9 @@ function SectionBox({ children }) {
 function Label({ children, isMobile }) {
   return (
     <div style={{
-      fontWeight: 600, color: '#1e293b', marginBottom: '5px',
-      fontSize: isMobile ? '16px' : '14px',
+      fontWeight: 600, color: '#64748b', marginBottom: '6px',
+      fontSize: isMobile ? '14px' : '12px',
+      letterSpacing: '0.3px',
     }}>{children}</div>
   )
 }
