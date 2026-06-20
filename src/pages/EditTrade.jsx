@@ -90,12 +90,15 @@ function Section({ title, children, isMobile }) {
       marginBottom: '16px',
     }}>
       <h3 style={{
-        fontSize: isMobile ? '16px' : '14px',
+        fontSize: '16px',
         fontWeight: 700,
-        color: '#64748b',
-        marginBottom: '16px',
-        textTransform: 'uppercase',
-        letterSpacing: '0.05em',
+        color: '#1e3a8a',
+        margin: '0 0 16px',
+        padding: '9px 14px',
+        background: '#eff6ff',
+        borderLeft: '4px solid #2563eb',
+        borderRadius: '6px',
+        letterSpacing: '0.2px',
       }}>
         {title}
       </h3>
@@ -278,10 +281,11 @@ export default function EditTrade() {
   const labelEl = (text, required) => (
     <label style={{
       display: 'block',
-      fontSize: isMobile ? '16px' : '14px',
+      fontSize: isMobile ? '14px' : '12px',
       fontWeight: 600,
-      color: '#1e293b',
-      marginBottom: '5px',
+      color: '#64748b',
+      letterSpacing: '0.3px',
+      marginBottom: '6px',
     }}>
       {text}{required && <span style={{ color: '#dc2626' }}> *</span>}
     </label>
@@ -703,8 +707,13 @@ export default function EditTrade() {
           </div>
         )}
 
-        {/* ── 기본 거래 정보 ── */}
+        {/* ── 기본 거래 정보 (PC: 2단, 모바일: 1단) ── */}
         <Section title="기본 거래 정보" isMobile={isMobile}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+            gap: isMobile ? '12px' : '20px',
+          }}>
           <div style={{ marginBottom: '12px' }}>
             {labelEl('종목명', true)}
             <SectionBox>
@@ -728,7 +737,7 @@ export default function EditTrade() {
               <div style={{ display: 'flex', gap: '8px' }}>
                 {['코스피', '코스닥'].map(m => (
                   <button key={m} type="button" onClick={() => setMarket(market === m ? '' : m)} style={{
-                    padding: '7px 20px', borderRadius: '8px',
+                    flex: 1, padding: '7px 0', borderRadius: '8px',
                     fontSize: isMobile ? '16px' : '14px', cursor: 'pointer',
                     fontWeight: market === m ? 700 : 400,
                     background: market === m
@@ -744,9 +753,17 @@ export default function EditTrade() {
               </div>
             </SectionBox>
           </div>
+          </div>
         </Section>
 
-        {/* ── 분할 매수 (PATCH 006 신규) ── */}
+        {/* ── 분할 매수 / 분할 매도 (PC: 2단, 모바일: 1단, PATCH 006) ── */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+          gap: isMobile ? '0' : '16px',
+          alignItems: 'start',
+        }}>
+        <div>
         <Section title="분할 매수" isMobile={isMobile}>
           <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#64748b', marginBottom: '12px' }}>
             수량과 매수가를 차수별로 입력하세요. 평균 매수가·총 수량이 자동 계산됩니다.
@@ -788,7 +805,9 @@ export default function EditTrade() {
             </SectionBox>
           </div>
         </Section>
+        </div>
 
+        <div>
         {/* ── 분할 매도 (PATCH 006 신규) ── */}
         <Section title="분할 매도" isMobile={isMobile}>
           <div style={{ fontSize: isMobile ? '16px' : '14px', color: '#64748b', marginBottom: '12px' }}>
@@ -847,6 +866,8 @@ export default function EditTrade() {
             </SectionBox>
           </div>
         </Section>
+        </div>
+        </div>
 
         {/* ── 분류 정보 ── */}
         <Section title="분류 정보" isMobile={isMobile}>
