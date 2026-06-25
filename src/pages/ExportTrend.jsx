@@ -124,7 +124,58 @@ export default function ExportTrend() {
           <div style={{ fontSize: '40px', marginBottom: '12px' }}>📭</div>
           <p>등록된 수출 데이터가 없습니다.</p>
         </div>
+      ) : isMobile ? (
+        /* 모바일: 카드형 레이아웃 (가로 스크롤 없음) */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {rows.map((row, idx) => {
+            const badge = verificationBadge[row.verification_status] || verificationBadge.unverified
+            const rate = row.yoy_rate != null ? Number(row.yoy_rate) : null
+            return (
+              <div key={row.id} style={{
+                background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px',
+                padding: '12px 14px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 600 }}>{idx + 1}</span>
+                    <span style={{ fontSize: '16px', fontWeight: 700, color: '#1e293b' }}>{row.item_name}</span>
+                  </div>
+                  <span style={{
+                    padding: '2px 8px',
+                    background: badge.bg, color: badge.color,
+                    border: `1px solid ${badge.border}`,
+                    borderRadius: '4px',
+                    fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap',
+                  }}>{badge.label}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontSize: '14px', color: '#1e293b' }}>
+                      {row.stock_name ?? <span style={{ color: '#cbd5e1' }}>-</span>}
+                    </div>
+                    {row.weight_note && (
+                      <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '2px' }}>{row.weight_note}</div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
+                      {formatBillionUsd(row.export_amount_usd)}
+                    </div>
+                    {rate != null ? (
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: getProfitColor(rate) }}>
+                        {rate > 0 ? '▲' : rate < 0 ? '▼' : ''} {rate >= 0 ? '+' : ''}{rate.toFixed(1)}%
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '14px', color: '#cbd5e1' }}>-</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       ) : (
+        /* PC: 표 레이아웃 */
         <div style={{
           background: '#fff', border: '1px solid #e2e8f0',
           borderRadius: '10px', overflow: 'hidden',
@@ -153,7 +204,7 @@ export default function ExportTrend() {
                         {row.stock_name ? (
                           <div>
                             <div style={{ fontWeight: 600 }}>{row.stock_name}</div>
-                            {!isMobile && row.weight_note && (
+                            {row.weight_note && (
                               <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
                                 {row.weight_note}
                               </div>
@@ -181,7 +232,7 @@ export default function ExportTrend() {
                           background: badge.bg, color: badge.color,
                           border: `1px solid ${badge.border}`,
                           borderRadius: '4px',
-                          fontSize: isMobile ? '13px' : '12px',
+                          fontSize: '12px',
                           fontWeight: 600,
                           whiteSpace: 'nowrap',
                         }}>{badge.label}</span>
