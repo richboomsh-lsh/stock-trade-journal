@@ -10,6 +10,7 @@ import Settings from './pages/Settings'
 import Login from './pages/Login'
 import ReviewStart from './pages/ReviewStart'
 import ReviewSession from './pages/ReviewSession'
+import ExportTrend from './pages/ExportTrend'
 
 function Navbar() {
   const location = useLocation()
@@ -18,6 +19,7 @@ function Navbar() {
     { to: '/new', label: '+ 매매' },
     { to: '/journal', label: '매매일지' },
     { to: '/stats', label: '통계' },
+    { to: '/export-trend', label: '수출동향' },
     { to: '/settings', label: '설정' },
   ]
   return (
@@ -99,6 +101,7 @@ export default function App() {
                 <Route path="/new" element={<NewTrade />} />
                 <Route path="/journal" element={<TradeJournal />} />
                 <Route path="/stats" element={<Stats />} />
+                <Route path="/export-trend" element={<ExportTrend />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/trade/:id" element={<TradeDetail />} />
                 <Route path="/edit/:id" element={<EditTrade />} />
