@@ -1,0 +1,40 @@
+name: 수출입동향 데이터 월간 수집
+
+on:
+  schedule:
+    # 매월 17일 00:00 UTC = 한국시간(KST) 매월 17일 오전 9시
+    - cron: '0 0 17 * *'
+  workflow_dispatch:
+    # 수동 실행 버튼 (테스트용 — Actions 탭에서 "Run workflow" 클릭 가능)
+    inputs:
+      yymm:
+        description: '수집할 년월 (예: 202605). 비워두면 자동으로 전월 사용'
+        required: false
+        default: ''
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 필요한 라이브러리 설치
+        run: pip install requests
+
+      - name: 데이터 수집 스크립트 실행
+        env:
+          CUSTOMS_API_SERVICE_KEY: ${{ secrets.CUSTOMS_API_SERVICE_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.yymm }}" ]; then
+            python collect_monthly_export_data.py "${{ github.event.inputs.yymm }}"
+          else
+            python collect_monthly_export_data.py
+          fi
