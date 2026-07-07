@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatKRW, getProfitColor } from '../lib/tradeHelpers'
 
@@ -34,11 +34,32 @@ function formatYymm(yymm) {
   return `${year}년 ${month}월`
 }
 
+// 증감률(YoY/MoM 공용) 표시 — 모듈 최상단 정의 (8-23 원칙)
+function RateText({ rate, fontSize, fontWeight }) {
+  if (rate == null) {
+    return <span style={{ fontSize, color: '#cbd5e1' }}>-</span>
+  }
+  return (
+    <span style={{ fontSize, fontWeight: fontWeight ?? 700, color: getProfitColor(rate), whiteSpace: 'nowrap' }}>
+      {rate > 0 ? '▲' : rate < 0 ? '▼' : ''} {rate >= 0 ? '+' : ''}{rate.toFixed(1)}%
+    </span>
+  )
+}
+
+// 정렬 옵션 종류 — 모듈 최상단 정의
+const SORT_OPTIONS = [
+  { value: 'default', label: '기본(순위순)' },
+  { value: 'amount', label: '수출액순' },
+  { value: 'yoy', label: '증가율순(YoY)' },
+]
+
 export default function ExportTrend() {
   const isMobile = useIsMobile()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [yymm, setYymm] = useState(null)
+  const [sortOption, setSortOption] = useState('default')
+  const [verifiedOnly, setVerifiedOnly] = useState(false)
 
   useEffect(() => { fetchData() }, [])
 
@@ -61,12 +82,45 @@ export default function ExportTrend() {
         sort_order: mapByItem[e.item_name]?.sort_order ?? 999,
       }))
 
-      merged.sort((a, b) => a.sort_order - b.sort_order)
-      setRows(merged)
-      if (merged.length > 0) setYymm(merged[0].yymm)
+      // EXPORT-PATCH 006 백필 이후 export_monthly에는 품목당 여러 달치 row가 존재함.
+      // 화면에는 품목별로 가장 최근 yymm 1건만 표시 (mom_rate는 이미 그 최신 row에 계산되어 있음)
+      const latestByItem = {}
+      merged.forEach(r => {
+        const existing = latestByItem[r.item_name]
+        if (!existing || r.yymm > existing.yymm) latestByItem[r.item_name] = r
+      })
+      const latestRows = Object.values(latestByItem)
+      latestRows.sort((a, b) => a.sort_order - b.sort_order)
+
+      setRows(latestRows)
+      if (latestRows.length > 0) {
+        const maxYymm = latestRows.reduce((m, r) => (r.yymm > m ? r.yymm : m), latestRows[0].yymm)
+        setYymm(maxYymm)
+      }
     }
     setLoading(false)
   }
+
+  // 정렬·필터 적용된 표시용 목록
+  const displayRows = useMemo(() => {
+    let list = rows
+    if (verifiedOnly) {
+      list = list.filter(r => r.verification_status === 'confirmed')
+    }
+    const sorted = [...list]
+    if (sortOption === 'amount') {
+      sorted.sort((a, b) => (Number(b.export_amount_usd) || 0) - (Number(a.export_amount_usd) || 0))
+    } else if (sortOption === 'yoy') {
+      sorted.sort((a, b) => {
+        const av = a.yoy_rate != null ? Number(a.yoy_rate) : -Infinity
+        const bv = b.yoy_rate != null ? Number(b.yoy_rate) : -Infinity
+        return bv - av
+      })
+    } else {
+      sorted.sort((a, b) => a.sort_order - b.sort_order)
+    }
+    return sorted
+  }, [rows, sortOption, verifiedOnly])
 
   const deferredCount = rows.filter(r => r.verification_status === 'deferred').length
   const unverifiedCount = rows.filter(r => r.verification_status === 'unverified').length
@@ -87,6 +141,15 @@ export default function ExportTrend() {
     color: '#1e293b',
     borderBottom: '1px solid #f1f5f9',
     verticalAlign: 'middle',
+  }
+
+  const controlSelectStyle = {
+    padding: isMobile ? '8px 10px' : '7px 10px',
+    fontSize: isMobile ? '14px' : '13px',
+    border: '1.5px solid #d1d5db',
+    borderRadius: '6px',
+    background: '#ffffff',
+    color: '#1e293b',
   }
 
   return (
@@ -114,22 +177,51 @@ export default function ExportTrend() {
         </div>
       )}
 
+      {/* 정렬·필터 컨트롤 */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '12px',
+        flexWrap: 'wrap', marginBottom: '14px',
+      }}>
+        <select
+          value={sortOption}
+          onChange={e => setSortOption(e.target.value)}
+          style={controlSelectStyle}
+        >
+          {SORT_OPTIONS.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: '6px',
+          fontSize: isMobile ? '14px' : '13px', color: '#475569', cursor: 'pointer',
+        }}>
+          <input
+            type="checkbox"
+            checked={verifiedOnly}
+            onChange={e => setVerifiedOnly(e.target.checked)}
+          />
+          검증완료만 보기
+        </label>
+      </div>
+
       {loading ? (
         <div style={{ textAlign: 'center', padding: '48px', color: '#94a3b8' }}>불러오는 중...</div>
-      ) : rows.length === 0 ? (
+      ) : displayRows.length === 0 ? (
         <div style={{
           textAlign: 'center', padding: '48px', background: '#fff',
           borderRadius: '12px', border: '1px solid #e2e8f0', color: '#94a3b8',
         }}>
           <div style={{ fontSize: '40px', marginBottom: '12px' }}>📭</div>
-          <p>등록된 수출 데이터가 없습니다.</p>
+          <p>{rows.length === 0 ? '등록된 수출 데이터가 없습니다.' : '조건에 맞는 품목이 없습니다.'}</p>
         </div>
       ) : isMobile ? (
         /* 모바일: 카드형 레이아웃 (가로 스크롤 없음) */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {rows.map((row, idx) => {
+          {displayRows.map((row, idx) => {
             const badge = verificationBadge[row.verification_status] || verificationBadge.unverified
-            const rate = row.yoy_rate != null ? Number(row.yoy_rate) : null
+            const yoy = row.yoy_rate != null ? Number(row.yoy_rate) : null
+            const mom = row.mom_rate != null ? Number(row.mom_rate) : null
             return (
               <div key={row.id} style={{
                 background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px',
@@ -148,7 +240,7 @@ export default function ExportTrend() {
                     fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap',
                   }}>{badge.label}</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ fontSize: '14px', color: '#1e293b' }}>
                       {row.stock_name ?? <span style={{ color: '#cbd5e1' }}>-</span>}
@@ -161,13 +253,12 @@ export default function ExportTrend() {
                     <div style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
                       {formatBillionUsd(row.export_amount_usd)}
                     </div>
-                    {rate != null ? (
-                      <div style={{ fontSize: '14px', fontWeight: 700, color: getProfitColor(rate) }}>
-                        {rate > 0 ? '▲' : rate < 0 ? '▼' : ''} {rate >= 0 ? '+' : ''}{rate.toFixed(1)}%
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '14px', color: '#cbd5e1' }}>-</div>
-                    )}
+                    <div style={{ marginTop: '2px' }}>
+                      <RateText rate={yoy} fontSize="14px" fontWeight={700} />
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                      전월대비 <RateText rate={mom} fontSize="12px" fontWeight={600} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -189,13 +280,15 @@ export default function ExportTrend() {
                   <th style={thStyle}>대표종목</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>수출액</th>
                   <th style={{ ...thStyle, textAlign: 'right' }}>전년동월대비</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>전월대비</th>
                   <th style={thStyle}>검증상태</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, idx) => {
+                {displayRows.map((row, idx) => {
                   const badge = verificationBadge[row.verification_status] || verificationBadge.unverified
-                  const rate = row.yoy_rate != null ? Number(row.yoy_rate) : null
+                  const yoy = row.yoy_rate != null ? Number(row.yoy_rate) : null
+                  const mom = row.mom_rate != null ? Number(row.mom_rate) : null
                   return (
                     <tr key={row.id}>
                       <td style={{ ...tdStyle, color: '#94a3b8', fontWeight: 600 }}>{idx + 1}</td>
@@ -218,13 +311,10 @@ export default function ExportTrend() {
                         {formatBillionUsd(row.export_amount_usd)}
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {rate != null ? (
-                          <span style={{ fontWeight: 700, color: getProfitColor(rate) }}>
-                            {rate > 0 ? '▲' : rate < 0 ? '▼' : ''} {rate >= 0 ? '+' : ''}{rate.toFixed(1)}%
-                          </span>
-                        ) : (
-                          <span style={{ color: '#cbd5e1' }}>-</span>
-                        )}
+                        <RateText rate={yoy} fontSize="14px" fontWeight={700} />
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <RateText rate={mom} fontSize="14px" fontWeight={700} />
                       </td>
                       <td style={tdStyle}>
                         <span style={{
