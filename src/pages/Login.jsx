@@ -1,21 +1,34 @@
 import { useState } from 'react'
+import { supabase } from '../lib/supabase'
 
-const CORRECT_PASSWORD = import.meta.env.VITE_APP_PASSWORD
+const AUTH_EMAIL = import.meta.env.VITE_AUTH_EMAIL
 
 export default function Login({ onLogin }) {
   const [input, setInput] = useState('')
   const [error, setError] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [isMobile] = useState(window.innerWidth <= 640)
 
-  function handleSubmit() {
-    if (input === CORRECT_PASSWORD) {
-      sessionStorage.setItem('authenticated', 'true')
-      onLogin()
-    } else {
+  async function handleSubmit() {
+    if (!input || loading) return
+    setLoading(true)
+    setError(false)
+
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: AUTH_EMAIL,
+      password: input,
+    })
+
+    setLoading(false)
+
+    if (authError) {
       setError(true)
       setInput('')
       setTimeout(() => setError(false), 2000)
+      return
     }
+
+    onLogin()
   }
 
   function handleKeyDown(e) {
@@ -42,10 +55,8 @@ export default function Login({ onLogin }) {
         boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
         textAlign: 'center',
       }}>
-        {/* 자물쇠 아이콘 */}
         <div style={{ fontSize: '40px', marginBottom: '12px' }}>🔒</div>
 
-        {/* 제목 */}
         <div style={{
           fontSize: isMobile ? '20px' : '18px',
           fontWeight: 700,
@@ -62,7 +73,6 @@ export default function Login({ onLogin }) {
           비밀번호를 입력하세요
         </div>
 
-        {/* 비밀번호 입력 */}
         <input
           type="password"
           value={input}
@@ -70,6 +80,7 @@ export default function Login({ onLogin }) {
           onKeyDown={handleKeyDown}
           placeholder="비밀번호"
           autoFocus
+          disabled={loading}
           style={{
             width: '100%',
             padding: '12px 14px',
@@ -85,7 +96,6 @@ export default function Login({ onLogin }) {
           }}
         />
 
-        {/* 오류 메시지 */}
         <div style={{
           fontSize: '14px',
           color: '#dc2626',
@@ -95,22 +105,22 @@ export default function Login({ onLogin }) {
           {error ? '비밀번호가 올바르지 않습니다' : ''}
         </div>
 
-        {/* 확인 버튼 */}
         <button
           onClick={handleSubmit}
+          disabled={loading}
           style={{
             width: '100%',
             padding: '12px',
             fontSize: isMobile ? '16px' : '15px',
             fontWeight: 600,
-            background: '#2563eb',
+            background: loading ? '#93c5fd' : '#2563eb',
             color: '#ffffff',
             border: 'none',
             borderRadius: '8px',
-            cursor: 'pointer',
+            cursor: loading ? 'default' : 'pointer',
           }}
         >
-          입장하기
+          {loading ? '확인 중...' : '입장하기'}
         </button>
       </div>
     </div>

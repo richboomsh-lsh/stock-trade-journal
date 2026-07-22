@@ -145,21 +145,35 @@ def calc_mom_rate(curr_amount: float, prev_amount):
 
 def _request_with_retry(url: str, max_retries: int = 4, base_delay: float = 2.0):
     """
-    requests.get()을 감싸서 네트워크 오류(ConnectionError, Timeout) 발생 시
-    잠시 대기 후 자동 재시도한다 (data.go.kr 서버가 연속 호출 중 연결을
-    강제로 끊는 경우가 있어 추가됨 — WinError 10054 등).
+    requests.get()을 감싸서 다음 두 종류의 오류 발생 시 잠시 대기 후 자동 재시도한다:
+      1) 네트워크 연결 오류 (ConnectionError, Timeout) — 예: WinError 10054
+      2) 서버 일시 오류 (502/503/504) — 예: 502 Bad Gateway
+
+    4xx 오류(인증 실패, 잘못된 요청 등)는 재시도해도 결과가 같으므로 재시도하지 않고 바로 예외를 던진다.
     """
     last_exc = None
     for attempt in range(1, max_retries + 1):
         try:
             resp = requests.get(url, timeout=30)
-            resp.raise_for_status()
+
+            if resp.status_code in (502, 503, 504):
+                wait = base_delay * attempt
+                print(f"    ⚠️  서버 일시 오류 {resp.status_code}, {wait:.0f}초 후 재시도 ({attempt}/{max_retries}회)")
+                last_exc = requests.exceptions.HTTPError(
+                    f"{resp.status_code} Server Error (retryable)", response=resp
+                )
+                time.sleep(wait)
+                continue
+
+            resp.raise_for_status()  # 4xx 등은 여기서 즉시 예외 발생 (재시도 안 함)
             return resp
+
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             last_exc = e
             wait = base_delay * attempt
             print(f"    ⚠️  네트워크 오류, {wait:.0f}초 후 재시도 ({attempt}/{max_retries}회): {type(e).__name__}")
             time.sleep(wait)
+
     raise last_exc
 
 

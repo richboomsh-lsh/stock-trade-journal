@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
+import { supabase } from './lib/supabase'
 import Home from './pages/Home'
 import NewTrade from './pages/NewTrade'
 import TradeJournal from './pages/TradeJournal'
@@ -12,7 +13,7 @@ import ReviewStart from './pages/ReviewStart'
 import ReviewSession from './pages/ReviewSession'
 import ExportTrend from './pages/ExportTrend'
 
-function Navbar() {
+function Navbar({ onLogout }) {
   const location = useLocation()
   const links = [
     { to: '/', label: '홈' },
@@ -27,37 +28,93 @@ function Navbar() {
       background: '#1e293b',
       display: 'flex', alignItems: 'center',
       height: '52px', position: 'sticky', top: 0, zIndex: 100,
-      padding: '0 12px', gap: '4px',
-      overflowX: 'auto',
+      padding: '0 12px', gap: '8px',
     }}>
       <span style={{
         color: '#60a5fa', fontWeight: 700, fontSize: '16px',
-        marginRight: '8px', whiteSpace: 'nowrap', flexShrink: 0,
+        marginRight: '4px', whiteSpace: 'nowrap', flexShrink: 0,
       }}>
         📈 매매일지
       </span>
-      {links.map(link => (
-        <Link key={link.to} to={link.to} style={{
-          color: location.pathname === link.to ? '#60a5fa' : '#94a3b8',
-          textDecoration: 'none',
-          padding: '6px 10px', borderRadius: '6px',
+
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '4px',
+        overflowX: 'auto', flex: 1,
+      }}>
+        {links.map(link => (
+          <Link key={link.to} to={link.to} style={{
+            color: location.pathname === link.to ? '#60a5fa' : '#94a3b8',
+            textDecoration: 'none',
+            padding: '6px 10px', borderRadius: '6px',
+            fontSize: '13px',
+            fontWeight: location.pathname === link.to ? 600 : 400,
+            background: location.pathname === link.to ? 'rgba(96,165,250,0.1)' : 'transparent',
+            whiteSpace: 'nowrap', flexShrink: 0,
+          }}>{link.label}</Link>
+        ))}
+      </div>
+
+      <button
+        onClick={onLogout}
+        style={{
+          background: 'transparent',
+          border: '1px solid #475569',
+          color: '#94a3b8',
+          padding: '6px 10px',
+          borderRadius: '6px',
           fontSize: '13px',
-          fontWeight: location.pathname === link.to ? 600 : 400,
-          background: location.pathname === link.to ? 'rgba(96,165,250,0.1)' : 'transparent',
-          whiteSpace: 'nowrap', flexShrink: 0,
-        }}>{link.label}</Link>
-      ))}
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
+        }}
+      >
+        로그아웃
+      </button>
     </nav>
   )
 }
 
 export default function App() {
-  const [authenticated, setAuthenticated] = useState(
-    () => sessionStorage.getItem('authenticated') === 'true'
-  )
+  const [authenticated, setAuthenticated] = useState(false)
+  const [checkingSession, setCheckingSession] = useState(true)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuthenticated(!!session)
+      setCheckingSession(false)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setAuthenticated(!!session)
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [])
 
   function handleLogin() {
     setAuthenticated(true)
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+  }
+
+  if (checkingSession) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f8fafc',
+        color: '#64748b',
+        fontSize: '14px',
+      }}>
+        불러오는 중...
+      </div>
+    )
   }
 
   return (
@@ -94,7 +151,7 @@ export default function App() {
             color: '#1e293b',
             colorScheme: 'light',
           }}>
-            <Navbar />
+            <Navbar onLogout={handleLogout} />
             <main style={{ maxWidth: '960px', margin: '0 auto', padding: '20px 14px' }}>
               <Routes>
                 <Route path="/" element={<Home />} />
