@@ -331,8 +331,7 @@ export default function NewTrade() {
         const path = `charts/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
         const { error: upErr } = await supabase.storage.from('chart-images').upload(path, img.file)
         if (!upErr) {
-          const { data: { publicUrl } } = supabase.storage.from('chart-images').getPublicUrl(path)
-          chartImageUrls.push(publicUrl)
+          chartImageUrls.push(path)
         }
       }
 
