@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { formatKRW, getProfitColor, gradeColors } from '../lib/tradeHelpers'
+import { deleteChartImages, getChartImageUrls } from '../lib/imageUpload'
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 640)
@@ -180,20 +181,14 @@ export default function TradeDetail() {
     }
     setTrade(data)
     if (data.chart_images && data.chart_images.length > 0) {
-      const urls = data.chart_images.map((path) => {
-        const { data: urlData } = supabase.storage.from('chart-images').getPublicUrl(path)
-        return urlData.publicUrl
-      })
-      setImageUrls(urls)
+      setImageUrls(getChartImageUrls(data.chart_images))
     }
     setLoading(false)
   }
 
   const deleteTrade = async () => {
     if (!window.confirm('이 매매 기록을 삭제하시겠습니까?')) return
-    if (trade.chart_images && trade.chart_images.length > 0) {
-      await supabase.storage.from('chart-images').remove(trade.chart_images)
-    }
+    await deleteChartImages(trade.chart_images)
     await supabase.from('trades').delete().eq('id', id)
     navigate('/journal')
   }

@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { useDropzone } from 'react-dropzone'
 import { supabase } from '../lib/supabase'
 import { calcProfitAmount, calcProfitRate, calcHoldingDays } from '../lib/tradeHelpers'
+import { uploadChartImages, deleteChartImages, getChartImageUrls, nameClipboardFiles } from '../lib/imageUpload'
 
 const DEFAULT_OPTIONS = {
   sector: ['에너지', '반도체', '바이오', '금융', '소비재', '화학', '철강', '건설', '운송', '기타'],
@@ -444,11 +445,7 @@ export default function EditTrade() {
 
     if (data.chart_images && data.chart_images.length > 0) {
       setExistingImages(data.chart_images)
-      const urls = data.chart_images.map(path => {
-        const { data: urlData } = supabase.storage.from('chart-images').getPublicUrl(path)
-        return urlData.publicUrl
-      })
-      setExistingUrls(urls)
+      setExistingUrls(getChartImageUrls(data.chart_images))
     }
     setLoading(false)
   }
@@ -474,10 +471,7 @@ export default function EditTrade() {
       const imageItems = Array.from(items).filter(item => item.type.startsWith('image/'))
       if (imageItems.length === 0) return
       const files = imageItems.map(item => item.getAsFile()).filter(Boolean)
-      const namedFiles = files.map((file, i) => {
-        const ext = file.type.split('/')[1] || 'png'
-        return new File([file], `paste_${Date.now()}_${i}.${ext}`, { type: file.type })
-      })
+      const namedFiles = nameClipboardFiles(files)
       addNewImages(namedFiles)
       setPasteHint(true)
       setTimeout(() => setPasteHint(false), 2000)
@@ -505,17 +499,9 @@ export default function EditTrade() {
     setUploadProgress(true)
 
     try {
-      if (removedImages.length > 0) {
-        await supabase.storage.from('chart-images').remove(removedImages)
-      }
+      await deleteChartImages(removedImages)
 
-      const uploadedPaths = []
-      for (const file of newFiles) {
-        const ext = file.name.split('.').pop() || 'png'
-        const path = `charts/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-        const { error } = await supabase.storage.from('chart-images').upload(path, file)
-        if (!error) uploadedPaths.push(path)
-      }
+      const uploadedPaths = await uploadChartImages(newFiles)
 
       const finalImagePaths = [...existingImages, ...uploadedPaths]
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useDropzone } from 'react-dropzone'
 import { supabase } from '../lib/supabase'
+import { uploadChartImages, nameClipboardFiles } from '../lib/imageUpload'
 import dayjs from 'dayjs'
 
 /* ─────────────────────────────────────────
@@ -245,16 +246,13 @@ export default function NewTrade() {
     const h = (e) => {
       const items = e.clipboardData?.items
       if (!items) return
-      for (const item of items) {
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile()
-          if (file) {
-            setImages(prev => [...prev, { file, preview: URL.createObjectURL(file) }])
-            setPasteMsg('이미지가 붙여넣기 되었습니다!')
-            setTimeout(() => setPasteMsg(''), 2000)
-          }
-        }
-      }
+      const imageItems = Array.from(items).filter(item => item.type.startsWith('image/'))
+      if (imageItems.length === 0) return
+      const files = imageItems.map(item => item.getAsFile()).filter(Boolean)
+      const namedFiles = nameClipboardFiles(files)
+      setImages(prev => [...prev, ...namedFiles.map(file => ({ file, preview: URL.createObjectURL(file) }))])
+      setPasteMsg('이미지가 붙여넣기 되었습니다!')
+      setTimeout(() => setPasteMsg(''), 2000)
     }
     window.addEventListener('paste', h)
     return () => window.removeEventListener('paste', h)
@@ -323,17 +321,8 @@ export default function NewTrade() {
     setSubmitting(true)
 
     try {
-      /* 이미지 업로드 */
-      const chartImageUrls = []
-      for (const img of images) {
-        if (!img.file) continue
-        const ext = img.file.name.split('.').pop() || 'jpg'
-        const path = `charts/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-        const { error: upErr } = await supabase.storage.from('chart-images').upload(path, img.file)
-        if (!upErr) {
-          chartImageUrls.push(path)
-        }
-      }
+      /* 이미지 업로드 (chart_images에는 항상 "경로"만 저장 — imageUpload.js 참고) */
+      const chartImageUrls = await uploadChartImages(images.map(img => img.file))
 
       const validLinks = newsLinks.filter(l => l.trim())
 
