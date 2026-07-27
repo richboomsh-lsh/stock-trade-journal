@@ -12,11 +12,13 @@ import Login from './pages/Login'
 import ReviewStart from './pages/ReviewStart'
 import ReviewSession from './pages/ReviewSession'
 import ExportTrend from './pages/ExportTrend'
+import WatchlistPage from './pages/WatchlistPage'
 
 function Navbar({ onLogout }) {
   const location = useLocation()
   const links = [
     { to: '/', label: '홈' },
+    { to: '/watchlist', label: '관심종목' },
     { to: '/new', label: '+ 매매' },
     { to: '/journal', label: '매매일지' },
     { to: '/stats', label: '통계' },
@@ -155,6 +157,7 @@ export default function App() {
             <main style={{ maxWidth: '960px', margin: '0 auto', padding: '20px 14px' }}>
               <Routes>
                 <Route path="/" element={<Home />} />
+                <Route path="/watchlist" element={<WatchlistPage />} />
                 <Route path="/new" element={<NewTrade />} />
                 <Route path="/journal" element={<TradeJournal />} />
                 <Route path="/stats" element={<Stats />} />
