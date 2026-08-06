@@ -44,6 +44,18 @@ function formatYymmShort(yymm) {
   return `${yymm.slice(2, 4)}.${yymm.slice(4, 6)}`
 }
 
+// 다음 자동 수집(매월 17일) 예정일 계산 — 오늘이 17일 이전이면 이번 달, 이후면 다음 달
+function getNextCollectionLabel() {
+  const now = new Date()
+  let year = now.getFullYear()
+  let month = now.getMonth() // 0-indexed
+  if (now.getDate() >= 17) {
+    month += 1
+    if (month > 11) { month = 0; year += 1 }
+  }
+  return `${year}년 ${month + 1}월 17일`
+}
+
 // 증감률(YoY/MoM 공용) 표시 — 모듈 최상단 정의 (8-23 원칙)
 function RateText({ rate, fontSize, fontWeight }) {
   if (rate == null) {
@@ -192,7 +204,7 @@ function SparklineModal({ item, onClose }) {
 }
 
 // 이번 달 변동폭 TOP 3 요약 배너 — 모듈 최상단 정의 (8-23 원칙)
-function TopMoversBanner({ rows, onSelect, isMobile }) {
+function TopMoversBanner({ rows, onSelect, isMobile, yymm }) {
   const movers = useMemo(() => {
     return rows
       .map(row => ({ row, value: getVarianceValue(row) }))
@@ -206,7 +218,7 @@ function TopMoversBanner({ rows, onSelect, isMobile }) {
   return (
     <div style={{ marginBottom: '14px' }}>
       <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#64748b', fontWeight: 600, marginBottom: '6px' }}>
-        🔥 이번 달 변동폭 TOP 3
+        🔥 {yymm ? formatYymm(yymm) : '이번 달'} 변동폭 TOP 3
       </div>
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
         {movers.map(({ row, value }) => {
@@ -366,10 +378,13 @@ export default function ExportTrend() {
       {/* 헤더 */}
       <div style={{ marginBottom: '16px' }}>
         <h2 style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: 700, color: '#1e293b', margin: '0 0 6px 0' }}>
-          📦 수출입동향
+          📦 수출동향
         </h2>
         <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#94a3b8' }}>
           {yymm ? `${formatYymm(yymm)} 기준 · 관세청 무역통계` : ''}
+        </div>
+        <div style={{ fontSize: isMobile ? '12px' : '11px', color: '#94a3b8', marginTop: '2px' }}>
+          다음 자동 수집 예정: {getNextCollectionLabel()} (관세청 통계 발표 후 반영)
         </div>
       </div>
 
@@ -387,7 +402,7 @@ export default function ExportTrend() {
       )}
 
       {/* 이번 달 변동폭 TOP 3 */}
-      {!loading && <TopMoversBanner rows={rows} onSelect={scrollToRow} isMobile={isMobile} />}
+      {!loading && <TopMoversBanner rows={rows} onSelect={scrollToRow} isMobile={isMobile} yymm={yymm} />}
 
       {/* 정렬·필터 컨트롤 */}
       <div style={{

@@ -33,7 +33,7 @@ export default function Home() {
         <Link to="/export-trend" style={{ textDecoration: 'none' }}>
           <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '24px', cursor: 'pointer' }}>
            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📦</div>
-           <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>수출입동향</div>
+           <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '4px' }}>수출동향</div>
            <div style={{ fontSize: '13px', color: '#94a3b8' }}>관세청 무역통계 연동</div>
          </div>
         </Link>
