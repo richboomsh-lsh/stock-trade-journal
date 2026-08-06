@@ -82,10 +82,18 @@ export default function Settings() {
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
 
+  // ── 대표종목명 관리 상태
+  const [stockMappings, setStockMappings]       = useState([]);
+  const [editingStockId, setEditingStockId]     = useState(null);
+  const [editingStockName, setEditingStockName] = useState('');
+  const [stockLoading, setStockLoading]         = useState(false);
+  const [stockMsg, setStockMsg]                 = useState(null);
+
   // ── 초기 데이터 로드
   useEffect(() => {
     loadAssetSettings();
     loadAllOptions();
+    loadStockMappings();
   }, []);
 
   async function loadAssetSettings() {
@@ -120,6 +128,36 @@ export default function Settings() {
       });
       setOptions(grouped);
     }
+  }
+
+  // ── 대표종목 매핑 목록 로드
+  async function loadStockMappings() {
+    const { data } = await supabase
+      .from('stock_item_mapping')
+      .select('*')
+      .order('sort_order');
+    if (data) setStockMappings(data);
+  }
+
+  // ── 대표종목명 변경
+  async function handleRenameStockName(id) {
+    const trimmed = editingStockName.trim();
+    if (!trimmed) { setEditingStockId(null); return; }
+    setStockLoading(true);
+    const { error } = await supabase
+      .from('stock_item_mapping')
+      .update({ stock_name: trimmed })
+      .eq('id', id);
+    if (!error) {
+      setStockMappings(prev => prev.map(m => m.id === id ? { ...m, stock_name: trimmed } : m));
+      setStockMsg({ type: 'ok', text: '✅ 저장되었습니다!' });
+      setTimeout(() => setStockMsg(null), 2000);
+    } else {
+      setStockMsg({ type: 'err', text: '저장 실패: ' + error.message });
+    }
+    setEditingStockId(null);
+    setEditingStockName('');
+    setStockLoading(false);
   }
 
   // ── 총 자산 입력 핸들러
@@ -723,6 +761,91 @@ export default function Settings() {
           {optMsg && (
             <div style={{ marginTop: 8, fontSize: isMobile ? '14px' : '13px', color: optMsg.type === 'ok' ? '#16a34a' : '#dc2626' }}>
               {optMsg.text}
+            </div>
+          )}
+        </div>
+
+        {/* ── 섹션 3: 수출동향 대표종목 관리 ── */}
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b', marginBottom: 12 }}>
+          📦 수출동향 대표종목 관리
+        </div>
+        <div style={cardStyle}>
+          <div style={{ fontSize: isMobile ? '14px' : '13px', color: '#64748b', marginBottom: 12 }}>
+            품목별 대표종목명을 클릭하면 수정할 수 있습니다.
+          </div>
+          {stockMappings.length === 0 ? (
+            <div style={{ color: '#94a3b8', fontSize: isMobile ? '14px' : '13px', padding: '8px 0' }}>
+              등록된 항목이 없습니다.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {stockMappings.map(m => (
+                <div
+                  key={m.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 8,
+                    padding: '8px 12px',
+                    gap: 12,
+                  }}
+                >
+                  <span style={{
+                    fontSize: isMobile ? '14px' : '13px',
+                    color: '#64748b',
+                    fontWeight: 600,
+                    width: isMobile ? 72 : 90,
+                    flexShrink: 0,
+                  }}>
+                    {m.item_name}
+                  </span>
+                  {editingStockId === m.id ? (
+                    <input
+                      autoFocus
+                      type="text"
+                      value={editingStockName}
+                      onChange={e => setEditingStockName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleRenameStockName(m.id);
+                        if (e.key === 'Escape') { setEditingStockId(null); setEditingStockName(''); }
+                      }}
+                      onBlur={() => handleRenameStockName(m.id)}
+                      style={{
+                        flex: 1,
+                        fontSize: isMobile ? '15px' : '14px',
+                        border: '1.5px solid #2563eb',
+                        borderRadius: 6,
+                        padding: '2px 8px',
+                        outline: 'none',
+                        color: '#1e293b',
+                        background: '#fff',
+                      }}
+                    />
+                  ) : (
+                    <span
+                      style={{
+                        flex: 1,
+                        fontSize: isMobile ? '15px' : '14px',
+                        color: '#1e293b',
+                        cursor: 'text',
+                      }}
+                      title="클릭하여 대표종목명 변경"
+                      onClick={() => { setEditingStockId(m.id); setEditingStockName(m.stock_name || ''); }}
+                    >
+                      {m.stock_name || <span style={{ color: '#cbd5e1' }}>(미지정)</span>}
+                    </span>
+                  )}
+                  <Pencil size={14} color="#cbd5e1" style={{ flexShrink: 0 }} />
+                </div>
+              ))}
+            </div>
+          )}
+          {stockMsg && (
+            <div style={{ marginTop: 8, fontSize: isMobile ? '14px' : '13px', color: stockMsg.type === 'ok' ? '#16a34a' : '#dc2626' }}>
+              {stockMsg.text}
             </div>
           )}
         </div>
