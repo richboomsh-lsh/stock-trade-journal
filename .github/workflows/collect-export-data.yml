@@ -1,9 +1,9 @@
 name: 수출입동향 데이터 월간 수집
 
 on:
-  schedule:
+  # schedule:
     # 매월 17일 00:00 UTC = 한국시간(KST) 매월 17일 오전 9시
-    - cron: '0 0 17 * *'
+  #  - cron: '0 0 17 * *'
   workflow_dispatch:
     # 수동 실행 버튼 (테스트용 — Actions 탭에서 "Run workflow" 클릭 가능)
     inputs:
