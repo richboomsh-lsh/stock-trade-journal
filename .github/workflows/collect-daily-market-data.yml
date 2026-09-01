@@ -1,0 +1,43 @@
+name: 일별 종목 데이터 수집 (screening)
+
+on:
+  schedule:
+    - cron: '15 7 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: '테스트용 종목 수 제한 (비워두면 전체 2,720종목 실행)'
+        required: false
+        default: ''
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: screening
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 패키지 설치
+        run: pip install -r requirements.txt
+
+      - name: 일별 데이터 수집 실행
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          if [ -n "${{ github.event.inputs.limit }}" ]; then
+            python scripts/collect_daily_market_data.py --limit ${{ github.event.inputs.limit }}
+          else
+            python scripts/collect_daily_market_data.py
+          fi
