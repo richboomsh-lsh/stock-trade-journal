@@ -36,6 +36,7 @@ import os
 import json
 import time
 import logging
+from datetime import datetime, timezone, timedelta
 from collections import deque
 
 import requests
@@ -49,6 +50,44 @@ APP_SECRET = os.getenv("KIS_APP_SECRET")
 
 # 실전투자 도메인 (모의투자 테스트 시 openapivts.koreainvestment.com:29443 으로 교체)
 BASE_URL = "https://openapi.koreainvestment.com:9443"
+
+# ---- 토큰 당일 캐싱 ----
+# KIS 접근토큰은 "1일 1회 발급 원칙" 안내가 오고 있어, 같은 날 스크립트를 여러 번
+# 실행하더라도(예: 수동 테스트 반복) 토큰을 중복 발급하지 않도록 파일 캐싱 추가.
+# ⚠️ 주의: 이 캐싱은 "같은 PC/같은 체크아웃"에서 파일이 남아있을 때만 유효함.
+#    GitHub Actions의 정기 스케줄 실행은 매번 새 가상머신(파일 없음)이라 스케줄
+#    실행 사이에는 캐싱이 적용되지 않음 — 이건 정상이며, 오히려 정기 실행은
+#    원래도 하루 1회뿐이라 문제 없음. 이 캐싱이 실제로 막아주는 건 "같은 날
+#    로컬에서 실수로 여러 번 재실행"하는 경우.
+TOKEN_CACHE_PATH = os.path.join(os.path.dirname(__file__), ".kis_token_cache.json")
+KST = timezone(timedelta(hours=9))
+
+
+def _today_kst():
+    return datetime.now(KST).strftime("%Y-%m-%d")
+
+
+def _load_cached_token():
+    if not os.path.exists(TOKEN_CACHE_PATH):
+        return None
+    try:
+        with open(TOKEN_CACHE_PATH, "r", encoding="utf-8") as f:
+            cache = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    if cache.get("issued_date_kst") == _today_kst() and cache.get("token"):
+        return cache["token"]
+    return None
+
+
+def _save_token_cache(token):
+    cache = {"token": token, "issued_date_kst": _today_kst()}
+    try:
+        with open(TOKEN_CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(cache, f)
+    except OSError as e:
+        logger.warning(f"토큰 캐시 저장 실패 (무시하고 계속 진행): {e}")
 
 # ---- 로깅 설정: print() 대신 사용 — 시각, 레벨(정보/경고/오류)이 자동으로 붙어서
 #      나중에 2,720종목 순회할 때 어디서 무슨 일이 있었는지 추적하기 쉬움 ----
@@ -67,18 +106,21 @@ def get_access_token():
     """
     KIS 접근토큰을 발급받는다. (test_kis_auth.py의 검증된 로직을 그대로 재사용)
 
-    ※ 캐싱(파일에 토큰 저장해뒀다가 재사용)은 일부러 넣지 않았음.
-      이 프로젝트는 "하루 1회 배치 스크립트" 용도라, 스크립트 시작할 때 1번만
-      호출해서 그 실행이 끝날 때까지(수 분~10여 분) 재사용하면 충분함.
-      토큰 유효시간은 통상 24시간이라 배치 1회 실행 중에 만료될 걱정은 없음.
-      (매일 정각 자동 실행 시 매번 새로 발급받는 것도 큰 문제 없음 — KIS는
-      "발급 후 일정 시간 내 재발급 시 기존 토큰 반환" 방식이라 낭비도 적음)
+    2026-09-08 SCREENING-PATCH 009: "1일 1회 발급 원칙" 안내 메시지가 매일 오는 것을
+    계기로, 당일(KST 기준) 이미 발급받은 토큰이 파일에 있으면 재사용하도록 변경.
+    (평소 정기 스케줄 실행 자체는 원래도 하루 1회라 문제 없었음 — 이건 실수로
+    같은 날 여러 번 수동 실행했을 때를 대비한 안전장치)
     """
     if not APP_KEY or not APP_SECRET:
         raise RuntimeError(
             "screening/.env 파일에 KIS_APP_KEY / KIS_APP_SECRET이 없습니다. "
             ".env.example을 참고해서 값을 채워주세요."
         )
+
+    cached = _load_cached_token()
+    if cached:
+        logger.info("오늘(KST) 이미 발급받은 토큰이 있어 재사용합니다 (신규 발급 안 함).")
+        return cached
 
     url = f"{BASE_URL}/oauth2/tokenP"
     headers = {"content-type": "application/json"}
@@ -96,6 +138,7 @@ def get_access_token():
         token = data.get("access_token")
         expires = data.get("access_token_token_expired")
         logger.info(f"토큰 발급 성공 (만료 예정: {expires})")
+        _save_token_cache(token)
         return token
     else:
         raise RuntimeError(

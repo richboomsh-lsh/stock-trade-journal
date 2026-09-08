@@ -16,7 +16,9 @@ screening.stock_master에 있는 전체 종목(코스피+코스닥, 2,720개)을
 """
 
 import os
+import time
 import argparse
+import traceback
 from datetime import datetime, timedelta, timezone
 
 from supabase import create_client
@@ -205,16 +207,35 @@ def collect_one_stock(token, limiter, stock_code):
     }
 
 
-def save_rows(client, rows):
-    """수집된 행들을 daily_market_data에 upsert (같은 trade_date+stock_code면 덮어씀)"""
+def save_rows(client, rows, max_retries=3):
+    """
+    수집된 행들을 daily_market_data에 upsert (같은 trade_date+stock_code면 덮어씀)
+    Supabase/Cloudflare 쪽 일시적 타임아웃(522 등)에 대비해 재시도 로직 포함.
+    (2026-09-03: 저장 도중 522 Connection timed out 발생 → 재시도 없이 전체 스크립트
+     중단되고 run_log 기록도 안 남은 사례 있음 — SCREENING-PATCH 009)
+    """
     if not rows:
         return
-    (
-        client.schema("screening")
-        .table("daily_market_data")
-        .upsert(rows, on_conflict="trade_date,stock_code")
-        .execute()
-    )
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            (
+                client.schema("screening")
+                .table("daily_market_data")
+                .upsert(rows, on_conflict="trade_date,stock_code")
+                .execute()
+            )
+            return  # 성공하면 바로 종료
+        except Exception as e:
+            last_error = e
+            wait_sec = 5 * (2 ** (attempt - 1))  # 5초 → 10초 → 20초
+            logger.warning(
+                f"저장 실패 (시도 {attempt}/{max_retries}): {e} — {wait_sec}초 후 재시도"
+            )
+            if attempt < max_retries:
+                time.sleep(wait_sec)
+    # 재시도까지 다 실패하면 예외를 다시 던져서 main()의 try/except가 잡게 함
+    raise last_error
 
 
 def write_run_log(client, run_date, status, stocks_processed, error_message, started_at, finished_at):
@@ -246,54 +267,80 @@ def main():
     run_date = datetime.now().strftime("%Y-%m-%d")
 
     client = get_supabase_client()
-    stocks = fetch_stock_list(client)
-    if args.limit:
-        stocks = stocks[: args.limit]
 
-    logger.info(f"총 {len(stocks)}종목 수집 시작")
-
-    token = get_access_token()
-    limiter = RateLimiter(max_calls_per_sec=2)
-
-    buffer = []
+    # 여기서부터 어떤 예외가 나든 반드시 run_log에 기록을 남긴다.
+    # (2026-09-03: 저장 중 예외 발생 시 run_log 기록 없이 스크립트가 죽어버린 사례 있음
+    #  — SCREENING-PATCH 009)
     success_count = 0
     fail_count = 0
+    try:
+        stocks = fetch_stock_list(client)
+        if args.limit:
+            stocks = stocks[: args.limit]
 
-    for i, stock in enumerate(stocks, 1):
-        stock_code = stock["stock_code"]
-        row = collect_one_stock(token, limiter, stock_code)
-        if row:
-            buffer.append(row)
-            success_count += 1
-        else:
-            fail_count += 1
+        logger.info(f"총 {len(stocks)}종목 수집 시작")
 
-        if len(buffer) >= args.batch_size:
+        token = get_access_token()
+        limiter = RateLimiter(max_calls_per_sec=2)
+
+        buffer = []
+
+        for i, stock in enumerate(stocks, 1):
+            stock_code = stock["stock_code"]
+            row = collect_one_stock(token, limiter, stock_code)
+            if row:
+                buffer.append(row)
+                success_count += 1
+            else:
+                fail_count += 1
+
+            if len(buffer) >= args.batch_size:
+                save_rows(client, buffer)
+                logger.info(f"[{i}/{len(stocks)}] 저장 완료 (누적 성공 {success_count} / 실패 {fail_count})")
+                buffer = []
+
+        if buffer:
             save_rows(client, buffer)
-            logger.info(f"[{i}/{len(stocks)}] 저장 완료 (누적 성공 {success_count} / 실패 {fail_count})")
-            buffer = []
 
-    if buffer:
-        save_rows(client, buffer)
+        finished_at = datetime.now(timezone.utc).isoformat()
+        # 일부 종목만 실패한 건 정상 범위(신규상장/거래정지 등)로 보고 success 처리.
+        # 단 하나도 성공하지 못했을 때만 fail로 기록.
+        status = "success" if success_count > 0 else "fail"
+        error_message = None if fail_count == 0 else f"{fail_count}종목 수집 실패 (콘솔 로그 참고)"
 
-    finished_at = datetime.now(timezone.utc).isoformat()
-    # 일부 종목만 실패한 건 정상 범위(신규상장/거래정지 등)로 보고 success 처리.
-    # 단 하나도 성공하지 못했을 때만 fail로 기록.
-    status = "success" if success_count > 0 else "fail"
-    error_message = None if fail_count == 0 else f"{fail_count}종목 수집 실패 (콘솔 로그 참고)"
+        write_run_log(
+            client,
+            run_date=run_date,
+            status=status,
+            stocks_processed=success_count,
+            error_message=error_message,
+            started_at=started_at,
+            finished_at=finished_at,
+        )
 
-    write_run_log(
-        client,
-        run_date=run_date,
-        status=status,
-        stocks_processed=success_count,
-        error_message=error_message,
-        started_at=started_at,
-        finished_at=finished_at,
-    )
+        logger.info(f"전체 완료: 성공 {success_count} / 실패 {fail_count}")
+        logger.info(f"run_log 기록 완료 (status={status})")
 
-    logger.info(f"전체 완료: 성공 {success_count} / 실패 {fail_count}")
-    logger.info(f"run_log 기록 완료 (status={status})")
+    except Exception as e:
+        # 재시도까지 다 실패했거나 예상 못한 예외 발생 → 반드시 fail로 기록 후 재발생
+        finished_at = datetime.now(timezone.utc).isoformat()
+        error_detail = f"{type(e).__name__}: {e}"
+        logger.error(f"실행 중 예외 발생, run_log에 fail로 기록합니다: {error_detail}")
+        logger.error(traceback.format_exc())
+        try:
+            write_run_log(
+                client,
+                run_date=run_date,
+                status="fail",
+                stocks_processed=success_count,
+                error_message=error_detail[:500],  # 컬럼 길이 안전을 위해 자름
+                started_at=started_at,
+                finished_at=finished_at,
+            )
+        except Exception as log_error:
+            # run_log 기록 자체가 실패하는 최악의 경우에도 최소한 콘솔엔 남긴다.
+            logger.error(f"run_log 기록마저 실패: {log_error}")
+        raise  # GitHub Actions가 이 실행을 실패(빨간 X)로 표시하도록 예외를 다시 던짐
 
 
 if __name__ == "__main__":
