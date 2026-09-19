@@ -41,3 +41,10 @@ jobs:
           else
             python scripts/collect_daily_market_data.py
           fi
+
+      - name: Run screening batch
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PYTHONIOENCODING: utf-8
+        run: python scripts/run_screening_batch.py
