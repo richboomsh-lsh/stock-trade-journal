@@ -13,6 +13,7 @@ import ReviewStart from './pages/ReviewStart'
 import ReviewSession from './pages/ReviewSession'
 import ExportTrend from './pages/ExportTrend'
 import WatchlistPage from './pages/WatchlistPage'
+import Screening from './pages/Screening'
 
 function Navbar({ onLogout }) {
   const location = useLocation()
@@ -23,6 +24,7 @@ function Navbar({ onLogout }) {
     { to: '/journal', label: '매매일지' },
     { to: '/stats', label: '통계' },
     { to: '/export-trend', label: '수출동향' },
+    { to: '/screening', label: '스크리닝 결과' },
     { to: '/settings', label: '설정' },
   ]
   return (
@@ -162,6 +164,7 @@ export default function App() {
                 <Route path="/journal" element={<TradeJournal />} />
                 <Route path="/stats" element={<Stats />} />
                 <Route path="/export-trend" element={<ExportTrend />} />
+                <Route path="/screening" element={<Screening />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/trade/:id" element={<TradeDetail />} />
                 <Route path="/edit/:id" element={<EditTrade />} />
