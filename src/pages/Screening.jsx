@@ -5,6 +5,7 @@ function Screening() {
   const [dates, setDates] = useState([])
   const [selectedDate, setSelectedDate] = useState(null)
   const [results, setResults] = useState([])
+  const [stockNames, setStockNames] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -45,9 +46,32 @@ function Screening() {
 
       if (error) {
         setError(error.message)
-      } else {
-        setResults(data)
+        setLoading(false)
+        return
       }
+
+      setResults(data)
+
+      const stockCodes = [...new Set(data.map((row) => row.stock_code))]
+      if (stockCodes.length > 0) {
+        const { data: stockData, error: stockError } = await supabaseScreening
+          .from('stock_master')
+          .select('stock_code, stock_name')
+          .in('stock_code', stockCodes)
+
+        if (!stockError && stockData) {
+          const nameMap = {}
+          stockData.forEach((s) => {
+            nameMap[s.stock_code] = s.stock_name
+          })
+          setStockNames(nameMap)
+        } else {
+          setStockNames({})
+        }
+      } else {
+        setStockNames({})
+      }
+
       setLoading(false)
     }
     fetchResults()
@@ -78,6 +102,7 @@ function Screening() {
             <tr>
               <th style={cellStyle}>순위</th>
               <th style={cellStyle}>종목코드</th>
+              <th style={cellStyle}>종목명</th>
               <th style={cellStyle}>외국인 연속일</th>
               <th style={cellStyle}>기관 연속일</th>
               <th style={cellStyle}>거래량급증</th>
@@ -91,6 +116,7 @@ function Screening() {
               <tr key={row.id}>
                 <td style={cellStyle}>{row.rank_in_result}</td>
                 <td style={cellStyle}>{row.stock_code}</td>
+                <td style={cellStyle}>{stockNames[row.stock_code] || '-'}</td>
                 <td style={cellStyle}>{row.foreign_streak_days}</td>
                 <td style={cellStyle}>{row.inst_streak_days}</td>
                 <td style={cellStyle}>{row.volume_surge_pct}</td>
