@@ -1,18 +1,22 @@
 """
 screening/scripts/collect_daily_market_data.py
 
-screening.stock_master에 있는 전체 종목(코스피+코스닥, 2,720개)을 순회하며
+screening.stock_master의 종목(코스피+코스닥)을 순회하며
 투자자매매동향(외국인/기관 순매수) + 일별시세(종가/거래량/거래대금/등락률)를
 수집해서 screening.daily_market_data에 저장한다.
 끝나면 screening.run_log에 실행 결과를 기록한다.
 
+단, 관리종목 / 투자주의환기 / 정리매매 / 불성실공시 / 거래정지로 지정된 종목은
+수집 대상에서 제외한다 (stock_master의 is_* 플래그 기준 — fetch_stock_list 참고).
+2026-10 기준 전체 약 2,720개 중 약 240개가 제외되어 수집 대상은 약 2,480개.
+
 실행 방법:
     cd screening
     python scripts/collect_daily_market_data.py --limit 5      ← 먼저 5종목으로 검증
-    python scripts/collect_daily_market_data.py                ← 검증되면 전체 실행 (약 45분 소요 예상)
+    python scripts/collect_daily_market_data.py                ← 검증되면 전체 실행 (약 41분 소요 예상)
 
-소요 시간 계산: 종목당 API 2건 호출, 초당 2건 제한 → 2,720종목 × 2건 ÷ 2건/초
-             ≈ 2,720초 ≈ 45분
+소요 시간 계산: 종목당 API 2건 호출, 초당 2건 제한 → 2,480종목 × 2건 ÷ 2건/초
+             ≈ 2,480초 ≈ 41분
 """
 
 import os
@@ -48,9 +52,69 @@ def get_supabase_client():
     return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 
+# stock_master의 위험종목 플래그 → 로그에 쓸 한글 사유명
+# (이 중 하나라도 true인 종목은 수집에서 제외한다)
+RISK_FLAGS = {
+    "is_managed": "관리종목",
+    "is_caution_warning": "투자주의환기",
+    "is_liquidation": "정리매매",
+    "is_unfaithful_disclosure": "불성실공시",
+    "is_trading_halted": "거래정지",
+}
+
+# 플래그가 이 일수 이상 갱신되지 않았으면 경고를 남긴다 (마스터 갱신 step 실패 감지용)
+FLAGS_STALE_DAYS = 2
+
+
+def warn_if_flags_stale(rows):
+    """
+    위험종목 플래그가 언제 갱신됐는지 확인해서, 오래되었으면 경고만 남긴다 (수집은 계속 진행).
+
+    워크플로우의 '종목마스터 갱신' step은 실패해도 수집을 막지 않도록 되어 있어서,
+    실패하면 어제까지의 플래그로 수집이 진행된다. 이 로그가 없으면 수집 로그만 보고는
+    플래그가 낡았다는 사실을 알 수 없기 때문에 여기서 한 번 더 알려준다.
+    """
+    stamps = [row.get("flags_updated_at") for row in rows if row.get("flags_updated_at")]
+    if not stamps:
+        logger.warning(
+            "⚠️ 위험종목 플래그가 아직 한 번도 갱신되지 않았습니다 (flags_updated_at이 전부 비어 있음) "
+            "— 모든 종목이 수집 대상으로 처리됩니다. "
+            "download_stock_master.py + upsert_stock_master.py를 먼저 실행하세요."
+        )
+        return
+
+    latest_raw = max(stamps)
+    try:
+        latest = datetime.fromisoformat(str(latest_raw).replace("Z", "+00:00"))
+    except ValueError:
+        logger.warning(
+            f"flags_updated_at 값을 해석할 수 없습니다: {latest_raw!r} — 신선도 확인을 건너뜁니다"
+        )
+        return
+    if latest.tzinfo is None:  # 혹시 시간대 정보가 없으면 UTC로 간주
+        latest = latest.replace(tzinfo=timezone.utc)
+
+    logger.info(f"위험종목 플래그 마지막 갱신: {latest.isoformat()}")
+
+    age_days = (datetime.now(timezone.utc) - latest).days
+    if age_days >= FLAGS_STALE_DAYS:
+        logger.warning(
+            f"⚠️ 위험종목 플래그가 {age_days}일째 갱신되지 않았습니다 (마지막: {latest.date()}) "
+            "— 마스터 갱신 step이 실패했을 수 있습니다. 오래된 플래그로 수집을 계속합니다."
+        )
+
+
 def fetch_stock_list(client):
     """
-    screening.stock_master에서 전체 종목코드 목록을 가져온다.
+    screening.stock_master에서 '수집 대상' 종목 목록을 가져온다.
+
+    관리종목 / 투자주의환기 / 정리매매 / 불성실공시 / 거래정지 플래그가
+    하나라도 켜진 종목은 제외한다 (제외 사유별 개수도 로그에 남긴다).
+    플래그는 워크플로우의 '종목마스터 갱신' step
+    (download_stock_master.py + upsert_stock_master.py)이 매일 채워준다.
+
+    제외는 DB 쿼리가 아니라 파이썬에서 처리한다. stock_master는 약 2,700행뿐이라
+    성능 차이가 없고, 전체를 받아와야 "전체 N개 중 M개 제외" 같은 집계를 남길 수 있다.
 
     ⚠️ Supabase REST API는 한 번의 요청당 기본적으로 최대 1,000건까지만
     반환한다 (프로젝트의 "Max Rows" 설정, 초과분은 에러 없이 조용히 잘림).
@@ -58,6 +122,7 @@ def fetch_stock_list(client):
     .range()로 1,000건씩 나눠 요청해서 전체를 모아온다.
     (2026-08-31 실측: 페이지네이션 없이 실행했더니 1,000종목만 처리되는 것을 확인)
     """
+    columns = "stock_code, stock_name, flags_updated_at, " + ", ".join(RISK_FLAGS)
     all_rows = []
     page_size = 1000
     offset = 0
@@ -65,7 +130,7 @@ def fetch_stock_list(client):
         resp = (
             client.schema("screening")
             .table("stock_master")
-            .select("stock_code, stock_name")
+            .select(columns)
             .range(offset, offset + page_size - 1)
             .execute()
         )
@@ -75,7 +140,22 @@ def fetch_stock_list(client):
         if len(rows) < page_size:
             break
         offset += page_size
-    return all_rows
+
+    warn_if_flags_stale(all_rows)
+
+    # 플래그가 하나라도 true면 수집 대상에서 뺀다
+    targets = [row for row in all_rows if not any(row.get(flag) for flag in RISK_FLAGS)]
+
+    reasons = ", ".join(
+        f"{label} {sum(1 for row in all_rows if row.get(flag))}"
+        for flag, label in RISK_FLAGS.items()
+    )
+    logger.info(f"제외 사유별 개수(중복 포함): {reasons}")
+    logger.info(
+        f"전체 {len(all_rows)}개 중 위험종목 {len(all_rows) - len(targets)}개 제외, "
+        f"수집 대상 {len(targets)}개"
+    )
+    return targets
 
 
 def build_headers(token, tr_id):

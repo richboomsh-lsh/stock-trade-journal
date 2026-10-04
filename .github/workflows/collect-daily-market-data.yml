@@ -28,6 +28,31 @@ jobs:
       - name: 패키지 설치
         run: pip install -r requirements.txt
 
+      # 관리종목/거래정지 등 '위험 지정' 상태는 매일 바뀌므로,
+      # 수집을 시작하기 직전에 최신 종목마스터 파일로 플래그를 갱신한다.
+      # continue-on-error: true → 이 step이 실패해도 job을 멈추지 않고 수집으로 넘어간다
+      # (그 경우 어제까지 DB에 저장된 플래그로 수집이 진행됨)
+      - name: 종목마스터 갱신 (위험종목 플래그)
+        id: update_master
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          python scripts/download_stock_master.py
+          python scripts/upsert_stock_master.py
+
+      # 위 step의 성공/실패를 Actions 요약 화면에 눈에 띄게 남긴다
+      - name: 마스터 갱신 결과 확인
+        if: always()
+        run: |
+          if [ "${{ steps.update_master.outcome }}" = "success" ]; then
+            echo "::notice title=마스터 갱신 성공::오늘자 위험종목 플래그로 수집합니다"
+          else
+            echo "::warning title=마스터 갱신 실패::종목마스터 갱신에 실패했습니다 (outcome=${{ steps.update_master.outcome }}). 어제까지 저장된 플래그로 수집을 계속합니다. 위 '종목마스터 갱신' step 로그를 확인하세요."
+          fi
+
       - name: 일별 데이터 수집 실행
         env:
           KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
