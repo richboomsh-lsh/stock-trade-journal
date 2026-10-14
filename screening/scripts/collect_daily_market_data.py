@@ -65,6 +65,9 @@ RISK_FLAGS = {
 # 플래그가 이 일수 이상 갱신되지 않았으면 경고를 남긴다 (마스터 갱신 step 실패 감지용)
 FLAGS_STALE_DAYS = 2
 
+# flags_updated_at이 빈 종목이 전체의 이 비율을 넘으면 '상장폐지 추정' 제외를 적용하지 않는다
+STALE_FILTER_MAX_RATIO = 0.05
+
 
 def warn_if_flags_stale(rows):
     """
@@ -143,14 +146,35 @@ def fetch_stock_list(client):
 
     warn_if_flags_stale(all_rows)
 
-    # 플래그가 하나라도 true면 수집 대상에서 뺀다
-    targets = [row for row in all_rows if not any(row.get(flag) for flag in RISK_FLAGS)]
+    # flags_updated_at이 비어 있는 종목 = 최신 마스터 파일에 없는 종목(상장폐지 추정).
+    # 단, 안전장치: 전부 비어 있거나(플래그를 한 번도 안 채운 상태) 비율이 너무 높으면
+    # 마스터 갱신 문제일 수 있으니 이 필터는 적용하지 않고 경고만 남긴다.
+    never_updated = [row for row in all_rows if not row.get("flags_updated_at")]
+    skip_stale_filter = False
+    if never_updated:
+        ratio = len(never_updated) / len(all_rows)
+        if len(never_updated) == len(all_rows) or ratio > STALE_FILTER_MAX_RATIO:
+            skip_stale_filter = True
+            logger.warning(
+                f"⚠️ 갱신 안 된 종목이 {len(never_updated)}개({ratio:.0%})로 비정상적으로 많아 "
+                "'상장폐지 추정' 제외를 적용하지 않습니다 (마스터 갱신 문제 가능성)."
+            )
+
+    def is_excluded(row):
+        if any(row.get(flag) for flag in RISK_FLAGS):
+            return True
+        return (not skip_stale_filter) and not row.get("flags_updated_at")
+
+    # 위험 플래그가 하나라도 true이거나 갱신 안 된 종목은 수집 대상에서 뺀다
+    targets = [row for row in all_rows if not is_excluded(row)]
 
     reasons = ", ".join(
         f"{label} {sum(1 for row in all_rows if row.get(flag))}"
         for flag, label in RISK_FLAGS.items()
     )
     logger.info(f"제외 사유별 개수(중복 포함): {reasons}")
+    if not skip_stale_filter:
+        logger.info(f"갱신 안 됨(상장폐지 추정) {len(never_updated)}개")
     logger.info(
         f"전체 {len(all_rows)}개 중 위험종목 {len(all_rows) - len(targets)}개 제외, "
         f"수집 대상 {len(targets)}개"
