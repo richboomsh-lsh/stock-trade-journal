@@ -20,6 +20,7 @@ screening.stock_master의 종목(코스피+코스닥)을 순회하며
 """
 
 import os
+import sys
 import time
 import argparse
 import traceback
@@ -424,6 +425,10 @@ def main():
 
         logger.info(f"전체 완료: 성공 {success_count} / 실패 {fail_count}")
         logger.info(f"run_log 기록 완료 (status={status})")
+
+        if status == "fail":
+            logger.error("수집 성공 0종목 — 종료코드 1로 종료합니다 (Actions를 실패로 표시)")
+            sys.exit(1)
 
     except Exception as e:
         # 재시도까지 다 실패했거나 예상 못한 예외 발생 → 반드시 fail로 기록 후 재발생
