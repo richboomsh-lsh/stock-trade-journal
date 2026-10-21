@@ -69,6 +69,12 @@ FLAGS_STALE_DAYS = 2
 # flags_updated_at이 빈 종목이 전체의 이 비율을 넘으면 '상장폐지 추정' 제외를 적용하지 않는다
 STALE_FILTER_MAX_RATIO = 0.05
 
+# 수집 성공 ÷ 수집 대상이 이 값 미만이면 실패 처리 (Actions를 빨간 X로 표시) — SCREENING-PATCH 015
+MIN_SUCCESS_RATIO = 0.9
+
+# 수집 대상이 이 개수 이상일 때만 위 비율을 적용한다 (--limit 등 소수 종목 테스트 보호)
+MIN_TARGETS_FOR_RATIO = 100
+
 
 def warn_if_flags_stale(rows):
     """
@@ -409,9 +415,20 @@ def main():
 
         finished_at = datetime.now(timezone.utc).isoformat()
         # 일부 종목만 실패한 건 정상 범위(신규상장/거래정지 등)로 보고 success 처리.
-        # 단 하나도 성공하지 못했을 때만 fail로 기록.
-        status = "success" if success_count > 0 else "fail"
-        error_message = None if fail_count == 0 else f"{fail_count}종목 수집 실패 (콘솔 로그 참고)"
+        # 단, 성공이 0건이거나 (대상이 충분히 많을 때) 성공 비율이 기준 미만이면 fail로 기록.
+        total = len(stocks)
+        if success_count == 0:
+            status = "fail"
+            error_message = f"성공 0 / 대상 {total}"
+        elif total >= MIN_TARGETS_FOR_RATIO and (success_count / total) < MIN_SUCCESS_RATIO:
+            status = "fail"
+            error_message = (
+                f"성공 {success_count} / 대상 {total} ({success_count / total:.1%}) "
+                f"— 기준 {MIN_SUCCESS_RATIO:.0%} 미만"
+            )
+        else:
+            status = "success"
+            error_message = None if fail_count == 0 else f"{fail_count}종목 수집 실패 (콘솔 로그 참고)"
 
         write_run_log(
             client,
@@ -427,7 +444,7 @@ def main():
         logger.info(f"run_log 기록 완료 (status={status})")
 
         if status == "fail":
-            logger.error("수집 성공 0종목 — 종료코드 1로 종료합니다 (Actions를 실패로 표시)")
+            logger.error(f"수집 실패 판정: {error_message} — 종료코드 1로 종료합니다 (Actions를 실패로 표시)")
             sys.exit(1)
 
     except Exception as e:
