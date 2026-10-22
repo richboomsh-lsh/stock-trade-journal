@@ -2,7 +2,8 @@ name: 일별 종목 데이터 수집 (screening)
 
 on:
   schedule:
-    - cron: '15 7 * * 1-5'
+    # 한국시간 평일 16:37 (UTC 07:37). 정각/15분/30분은 GitHub 대기열이 붐벼 지연되므로 어긋난 분으로 설정
+    - cron: '37 7 * * 1-5'
   workflow_dispatch:
     inputs:
       limit:
