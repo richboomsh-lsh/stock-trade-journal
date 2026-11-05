@@ -91,3 +91,10 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PYTHONIOENCODING: utf-8
         run: python scripts/run_screening_batch.py
+
+      - name: Run gradual screening
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PYTHONIOENCODING: utf-8
+        run: python scripts/run_gradual_screening.py
