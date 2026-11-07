@@ -29,3 +29,8 @@ screening/scripts/.kis_token_cache.json
 
 __pycache__/
 *.pyc
+screening/screening_design_doc.md
+
+# 매일 KRX에서 새로 받아 만드는 파일 (저장소에 올리지 않음)
+screening/data/*
+!screening/data/.gitkeep
