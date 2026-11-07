@@ -265,12 +265,49 @@ def calc_yoy_rate(curr_amount: float, prev_amount: float) -> float | None:
     return round((curr_amount - prev_amount) / prev_amount * 100, 1)
 
 
+def prev_month_yymm(yymm: str) -> str:
+    """'202605' -> '202604', '202601' -> '202512' (연도 경계 처리)"""
+    year = int(yymm[:4])
+    month = int(yymm[4:6]) - 1
+    if month == 0:
+        year -= 1
+        month = 12
+    return f"{year}{month:02d}"
+
+
+def fetch_prev_month_amount(item_name: str, prev_month: str) -> float | None:
+    """
+    DB export_monthly에서 같은 품목의 전월 수출액(USD)을 읽는다.
+    - 행이 있으면 금액(float), 행이 없으면 None
+    - 조회 자체가 실패하면(네트워크 오류, 200이 아닌 응답, 응답 형식 이상) 예외를 던진다.
+    관세청 API를 다시 부르지 않기 위해 DB 값을 쓴다.
+    """
+    url = f"{SUPABASE_URL}/rest/v1/export_monthly"
+    headers = {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+    }
+    params = {
+        "item_name": f"eq.{item_name}",
+        "yymm": f"eq.{prev_month}",
+        "select": "export_amount_usd",
+    }
+    resp = requests.get(url, headers=headers, params=params, timeout=20)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Supabase 조회 응답 {resp.status_code}: {resp.text[:200]}")
+    rows = resp.json()
+    if not rows:
+        return None
+    return float(rows[0]["export_amount_usd"])
+
+
 # ============================================================
 # 4. Supabase upsert (PostgREST REST API 직접 호출)
 # ============================================================
 
 def upsert_export_monthly(item_name: str, hs_codes: list[str], yymm: str,
-                           amount_usd: float, yoy_rate: float | None, status: str) -> bool:
+                           amount_usd: float, yoy_rate: float | None, status: str,
+                           mom_rate: float | None = None) -> bool:
     """
     export_monthly 테이블에 upsert.
     unique 제약 (item_name, yymm) 기준으로 merge — 기존 행 있으면 업데이트, 없으면 삽입.
@@ -290,6 +327,9 @@ def upsert_export_monthly(item_name: str, hs_codes: list[str], yymm: str,
         "yoy_rate": yoy_rate,
         "verification_status": status,
     }
+    # mom_rate가 None이면 항목 자체를 빼야 함 (None을 넣으면 upsert 때 기존 값이 NULL로 덮어씌워짐)
+    if mom_rate is not None:
+        payload["mom_rate"] = mom_rate
 
     resp = requests.post(url, headers=headers, json=payload, timeout=20)
     if resp.status_code in (200, 201, 204):
@@ -313,6 +353,11 @@ def get_default_yymm() -> str:
     return f"{year}{month:02d}"
 
 
+def exit_code_for(fail_count: int, mom_fail_items: list) -> int:
+    """종료 코드 판정: fail_count > 0 또는 mom_fail_items 비어 있지 않으면 1, 아니면 0"""
+    return 1 if (fail_count > 0 or mom_fail_items) else 0
+
+
 def main():
     if not CUSTOMS_SERVICE_KEY or not SUPABASE_URL or not SUPABASE_ANON_KEY:
         print("❌ 환경변수가 설정되지 않았습니다. .env.local 파일에 다음 값을 확인하세요:")
@@ -324,9 +369,13 @@ def main():
 
     print(f"=== 수출입동향 데이터 수집 시작: {yymm} (전년동월: {prev_yymm}) ===\n")
 
+    prev_month = prev_month_yymm(yymm)
+
     skipped = []
     success_count = 0
     fail_count = 0
+    failed_items = []      # 수집/저장 실패 품목
+    mom_fail_items = []    # 전월 금액 조회 자체가 실패한 품목 (fail_count와 별도 관리)
 
     for item_name, meta in ITEM_MAPPING.items():
         mode = meta["mode"]
@@ -346,6 +395,7 @@ def main():
             except requests.RequestException as e:
                 print(f"  ❌ API 호출 실패: {e}")
                 fail_count += 1
+                failed_items.append(item_name)
                 continue
             saved_hs_codes = hs_codes
 
@@ -365,6 +415,7 @@ def main():
             except requests.RequestException as e:
                 print(f"  ❌ API 호출 실패: {e}")
                 fail_count += 1
+                failed_items.append(item_name)
                 continue
             saved_hs_codes = target_codes
 
@@ -377,18 +428,38 @@ def main():
 
         print(f"  수출액: ${curr_amount:,.0f} | 전년동월: ${prev_amount:,.0f} | YoY: {yoy}%")
 
-        ok = upsert_export_monthly(item_name, saved_hs_codes, yymm, curr_amount, yoy, status)
+        # 전월대비(MoM): 전월 금액은 DB에 저장된 값이라, 관세청이 15일경 전월을 정정하면 소수점 단위로 어긋날 수 있음 (의도된 선택)
+        mom = None
+        try:
+            prev_month_amount = fetch_prev_month_amount(item_name, prev_month)
+            if prev_month_amount is None or prev_month_amount == 0:
+                print(f"  ℹ️  전월({prev_month}) 데이터가 없거나 0이라 mom_rate는 저장하지 않음")
+            else:
+                mom = calc_yoy_rate(curr_amount, prev_month_amount)
+        except (requests.RequestException, RuntimeError, ValueError, KeyError, TypeError) as e:
+            print(f"  ⚠️  전월 금액 조회 실패, mom_rate 없이 저장: {e}")
+            mom_fail_items.append(item_name)
+
+        ok = upsert_export_monthly(item_name, saved_hs_codes, yymm, curr_amount, yoy, status, mom)
         if ok:
-            print(f"  ✅ Supabase 저장 완료\n")
+            print(f"  ✅ Supabase 저장 완료 (MoM: {mom}%)\n" if mom is not None else f"  ✅ Supabase 저장 완료\n")
             success_count += 1
         else:
             fail_count += 1
+            failed_items.append(item_name)
 
     print("=== 수집 완료 ===")
     print(f"성공: {success_count}건 / 실패: {fail_count}건 / 스킵(미검증): {len(skipped)}건")
+    if failed_items:
+        print(f"실패 품목: {', '.join(failed_items)}")
+    if mom_fail_items:
+        print(f"전월대비 계산 실패 품목: {', '.join(mom_fail_items)}")
     if skipped:
         print(f"스킵된 품목: {', '.join(skipped)}")
         print("→ 8개 미검증 품목은 HS코드 매핑 완료 후 ITEM_MAPPING에 추가하면 자동으로 수집 대상에 포함됩니다.")
+
+    # 모든 품목 처리가 끝난 뒤 종료 판정: 실패 또는 전월대비 계산 실패가 있으면 1
+    sys.exit(exit_code_for(fail_count, mom_fail_items))
 
 
 if __name__ == "__main__":
