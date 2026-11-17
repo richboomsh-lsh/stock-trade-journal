@@ -61,6 +61,8 @@ CUSTOMS_BASE_URL = "https://apis.data.go.kr/1220000/Itemtrade/getItemtradeList"
 NUM_OF_ROWS = 100
 MAX_PAGES = 20  # 관세청 API가 pageNo 무시하고 같은 페이지 반복 응답하는 버그 방어용 안전장치
 REQUEST_DELAY_SEC = 0.3  # API 과호출(rate limit) 방지용 호출 간 대기시간
+MAX_ATTEMPTS = 3         # API 페이지 한 번 호출의 총 시도 횟수 (처음 1 + 재시도 2)
+RETRY_DELAY_SEC = 5      # 재시도 사이 대기시간(초)
 
 
 # ============================================================
@@ -137,10 +139,53 @@ ITEM_MAPPING = {
 # 2. 관세청 API 호출 + XML 파싱 (합계행 제외 핵심 로직)
 # ============================================================
 
+class ApiFetchError(Exception):
+    """관세청 API 호출이 재시도 후에도 끝내 실패했거나, 결과가 믿을 수 없을 때(합계 0/데이터 없음) 던진다."""
+
+
+def fetch_page_with_retry(yymm: str, hs_code: str, page_no: int) -> ET.Element:
+    """
+    API 페이지 1번 호출. HTTP 오류 / XML 파싱 실패 / resultCode != 00 이면
+    총 MAX_ATTEMPTS번 시도(사이에 RETRY_DELAY_SEC초 대기)하고, 그래도 실패하면 ApiFetchError.
+    """
+    url = (
+        f"{CUSTOMS_BASE_URL}"
+        f"?serviceKey={CUSTOMS_SERVICE_KEY}"
+        f"&strtYymm={yymm}&endYymm={yymm}"
+        f"&hsSgn={hs_code}"
+        f"&numOfRows={NUM_OF_ROWS}&pageNo={page_no}"
+    )
+    last_error = ""
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            resp = requests.get(url, timeout=20)
+            resp.raise_for_status()
+            try:
+                root = ET.fromstring(resp.text)
+            except ET.ParseError:
+                last_error = f"XML 파싱 실패 — 응답 일부: {resp.text[:200]}"
+            else:
+                # data.go.kr 공통 포맷: resultCode != '00' 이면 오류
+                result_code = root.findtext(".//resultCode")
+                if result_code is not None and result_code != "00":
+                    last_error = f"API 오류 응답 {result_code} {root.findtext('.//resultMsg')}"
+                else:
+                    return root
+        except requests.RequestException as e:
+            last_error = f"HTTP/네트워크 오류: {e}"
+
+        print(f"  ⚠️  {last_error} (yymm={yymm}, hs={hs_code}, page={page_no}, 시도 {attempt}/{MAX_ATTEMPTS})")
+        if attempt < MAX_ATTEMPTS:
+            time.sleep(RETRY_DELAY_SEC)
+
+    raise ApiFetchError(f"yymm={yymm}, hs={hs_code}, page={page_no}: {last_error}")
+
+
 def fetch_item_trade_raw(yymm: str, hs_code: str) -> list[dict]:
     """
     단일 HS코드 + 단일 년월에 대해 관세청 API를 호출하고,
     합계행(hsCode 또는 statKor == '-')을 제외한 개별 품목 행만 반환한다.
+    호출이 재시도 후에도 실패하면 ApiFetchError를 던진다.
 
     페이지네이션 안전장치: 관세청 API가 일부 조건에서 pageNo를 무시하고
     동일한 페이지를 반복 응답하는 버그가 있어, 이전 페이지와 동일한
@@ -150,29 +195,7 @@ def fetch_item_trade_raw(yymm: str, hs_code: str) -> list[dict]:
     seen_signatures = set()
 
     for page_no in range(1, MAX_PAGES + 1):
-        url = (
-            f"{CUSTOMS_BASE_URL}"
-            f"?serviceKey={CUSTOMS_SERVICE_KEY}"
-            f"&strtYymm={yymm}&endYymm={yymm}"
-            f"&hsSgn={hs_code}"
-            f"&numOfRows={NUM_OF_ROWS}&pageNo={page_no}"
-        )
-
-        resp = requests.get(url, timeout=20)
-        resp.raise_for_status()
-
-        try:
-            root = ET.fromstring(resp.text)
-        except ET.ParseError:
-            print(f"  ⚠️  XML 파싱 실패 (yymm={yymm}, hs={hs_code}, page={page_no}) — 응답 일부: {resp.text[:200]}")
-            break
-
-        # 결과 코드 체크 (data.go.kr 공통 포맷: resultCode != '00' 이면 오류)
-        result_code = root.findtext(".//resultCode")
-        if result_code is not None and result_code != "00":
-            result_msg = root.findtext(".//resultMsg")
-            print(f"  ⚠️  API 오류 응답 (yymm={yymm}, hs={hs_code}): {result_code} {result_msg}")
-            break
+        root = fetch_page_with_retry(yymm, hs_code, page_no)
 
         items = root.findall(".//item")
         if not items:
@@ -216,13 +239,22 @@ def fetch_item_trade_raw(yymm: str, hs_code: str) -> list[dict]:
     return all_rows
 
 
+def _check_total(yymm: str, row_count: int, total: float) -> None:
+    """검증된 품목의 합계가 0이거나 데이터 행이 하나도 없으면 비정상 → 실패 처리 (과거 0원인 달이 없었음)."""
+    if row_count == 0 or total == 0:
+        raise ApiFetchError(f"yymm={yymm}: 데이터 행 {row_count}개, 합계 {total} — 비정상 응답으로 판단")
+
+
 def sum_export_amount_by_heading(yymm: str, hs_codes: list[str]) -> float:
     """[mode=heading] 여러 HS 헤딩의 expDlr 합계(달러). 합계행은 이미 제외됨."""
     total = 0.0
+    row_count = 0
     for hs_code in hs_codes:
         rows = fetch_item_trade_raw(yymm, hs_code)
+        row_count += len(rows)
         total += sum(r["expDlr"] for r in rows)
         time.sleep(REQUEST_DELAY_SEC)
+    _check_total(yymm, row_count, total)
     return total
 
 
@@ -240,11 +272,14 @@ def sum_export_amount_by_hs_list(yymm: str, target_codes: list[str]) -> float:
     headings = sorted(set(code[:4] for code in target_set))
 
     total = 0.0
+    row_count = 0
     for heading in headings:
         rows = fetch_item_trade_raw(yymm, heading)
         matched = [r for r in rows if r["hsCode"] in target_set]
+        row_count += len(matched)
         total += sum(r["expDlr"] for r in matched)
         time.sleep(REQUEST_DELAY_SEC)
+    _check_total(yymm, row_count, total)
     return total
 
 
@@ -324,9 +359,11 @@ def upsert_export_monthly(item_name: str, hs_codes: list[str], yymm: str,
         "hs_codes": hs_codes,
         "yymm": yymm,
         "export_amount_usd": round(amount_usd, 2),
-        "yoy_rate": yoy_rate,
         "verification_status": status,
     }
+    # yoy_rate도 mom_rate와 같은 원칙: None이면 항목 자체를 뺀다 (기존 DB 값 보존)
+    if yoy_rate is not None:
+        payload["yoy_rate"] = yoy_rate
     # mom_rate가 None이면 항목 자체를 빼야 함 (None을 넣으면 upsert 때 기존 값이 NULL로 덮어씌워짐)
     if mom_rate is not None:
         payload["mom_rate"] = mom_rate
@@ -353,9 +390,9 @@ def get_default_yymm() -> str:
     return f"{year}{month:02d}"
 
 
-def exit_code_for(fail_count: int, mom_fail_items: list) -> int:
-    """종료 코드 판정: fail_count > 0 또는 mom_fail_items 비어 있지 않으면 1, 아니면 0"""
-    return 1 if (fail_count > 0 or mom_fail_items) else 0
+def exit_code_for(fail_count: int, mom_fail_items: list, yoy_fail_items: list = ()) -> int:
+    """종료 코드 판정: fail_count > 0 또는 mom/yoy 실패 목록이 비어 있지 않으면 1, 아니면 0"""
+    return 1 if (fail_count > 0 or mom_fail_items or yoy_fail_items) else 0
 
 
 def main():
@@ -376,6 +413,7 @@ def main():
     fail_count = 0
     failed_items = []      # 수집/저장 실패 품목
     mom_fail_items = []    # 전월 금액 조회 자체가 실패한 품목 (fail_count와 별도 관리)
+    yoy_fail_items = []    # 전년동월 조회가 실패/0이라 yoy_rate 없이 저장한 품목 (fail_count와 별도 관리)
 
     for item_name, meta in ITEM_MAPPING.items():
         mode = meta["mode"]
@@ -389,14 +427,7 @@ def main():
                 continue
 
             print(f"▶ {item_name} (HS 헤딩: {', '.join(hs_codes)})")
-            try:
-                curr_amount = sum_export_amount_by_heading(yymm, hs_codes)
-                prev_amount = sum_export_amount_by_heading(prev_yymm, hs_codes)
-            except requests.RequestException as e:
-                print(f"  ❌ API 호출 실패: {e}")
-                fail_count += 1
-                failed_items.append(item_name)
-                continue
+            sum_fn = lambda ym, _codes=hs_codes: sum_export_amount_by_heading(ym, _codes)
             saved_hs_codes = hs_codes
 
         elif mode == "hs_list":
@@ -409,14 +440,7 @@ def main():
 
             n_headings = len(set(c[:4] for c in target_codes))
             print(f"▶ {item_name} (정밀목록 {len(target_codes)}개 코드, API 호출 {n_headings}회)")
-            try:
-                curr_amount = sum_export_amount_by_hs_list(yymm, target_codes)
-                prev_amount = sum_export_amount_by_hs_list(prev_yymm, target_codes)
-            except requests.RequestException as e:
-                print(f"  ❌ API 호출 실패: {e}")
-                fail_count += 1
-                failed_items.append(item_name)
-                continue
+            sum_fn = lambda ym, _codes=target_codes: sum_export_amount_by_hs_list(ym, _codes)
             saved_hs_codes = target_codes
 
         else:
@@ -424,9 +448,26 @@ def main():
             skipped.append(item_name)
             continue
 
-        yoy = calc_yoy_rate(curr_amount, prev_amount)
+        # 이번 달: 실패/0이면 저장하지 않고(기존 DB 값 보존) 실패로 센다
+        try:
+            curr_amount = sum_fn(yymm)
+        except ApiFetchError as e:
+            print(f"  ❌ 이번 달({yymm}) 수집 실패, 저장하지 않음: {e}\n")
+            fail_count += 1
+            failed_items.append(item_name)
+            continue
 
-        print(f"  수출액: ${curr_amount:,.0f} | 전년동월: ${prev_amount:,.0f} | YoY: {yoy}%")
+        # 전년동월: 실패/0이면 이번 달 금액은 저장하되 yoy_rate는 뺀다
+        yoy = None
+        try:
+            prev_amount = sum_fn(prev_yymm)
+            yoy = calc_yoy_rate(curr_amount, prev_amount)
+            print(f"  수출액: ${curr_amount:,.0f} | 전년동월: ${prev_amount:,.0f} | YoY: {yoy}%")
+        except ApiFetchError as e:
+            print(f"  ⚠️  전년동월({prev_yymm}) 조회 실패, yoy_rate 없이 저장: {e}")
+            print(f"  수출액: ${curr_amount:,.0f}")
+        if yoy is None:
+            yoy_fail_items.append(item_name)
 
         # 전월대비(MoM): 전월 금액은 DB에 저장된 값이라, 관세청이 15일경 전월을 정정하면 소수점 단위로 어긋날 수 있음 (의도된 선택)
         mom = None
@@ -454,12 +495,14 @@ def main():
         print(f"실패 품목: {', '.join(failed_items)}")
     if mom_fail_items:
         print(f"전월대비 계산 실패 품목: {', '.join(mom_fail_items)}")
+    if yoy_fail_items:
+        print(f"전년동월 계산 실패 품목: {', '.join(yoy_fail_items)}")
     if skipped:
         print(f"스킵된 품목: {', '.join(skipped)}")
         print("→ 8개 미검증 품목은 HS코드 매핑 완료 후 ITEM_MAPPING에 추가하면 자동으로 수집 대상에 포함됩니다.")
 
     # 모든 품목 처리가 끝난 뒤 종료 판정: 실패 또는 전월대비 계산 실패가 있으면 1
-    sys.exit(exit_code_for(fail_count, mom_fail_items))
+    sys.exit(exit_code_for(fail_count, mom_fail_items, yoy_fail_items))
 
 
 if __name__ == "__main__":
