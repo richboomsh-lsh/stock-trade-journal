@@ -39,3 +39,6 @@ screening/data/*
 /run_log.txt
 .claude/
 screening/scripts/check_accumulation.py
+
+# 문서는 비공개 저장소(stock-trade-journal-docs)에서 따로 관리 (SCREENING-PATCH 021)
+/docs/
