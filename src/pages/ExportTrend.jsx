@@ -44,6 +44,12 @@ function formatYymmShort(yymm) {
   return `${yymm.slice(2, 4)}.${yymm.slice(4, 6)}`
 }
 
+// 산업통상부 보도·참고자료 게시판을 제목 "수출입 동향"으로 검색한 주소 (EXPORT-PATCH 014)
+// 최신순이라 매월 1일 발표되는 「YYYY년 M월 수출입 동향」(전월 잠정치)이 맨 위쪽에 뜬다.
+// 띄어쓰기 없는 "수출입동향"으로 검색하면 최근 글이 빠지므로 띄어쓰기를 유지할 것.
+const MOTIE_PRESS_URL =
+  'https://www.motir.go.kr/kor/article/ATCL3f49a5a8c?searchCondition=1&searchKeyword=%EC%88%98%EC%B6%9C%EC%9E%85%20%EB%8F%99%ED%96%A5'
+
 // 다음 자동 수집(매월 17일) 예정일 계산 — 오늘이 17일 이전이면 이번 달, 이후면 다음 달
 function getNextCollectionLabel() {
   const now = new Date()
@@ -385,6 +391,18 @@ export default function ExportTrend() {
         </div>
         <div style={{ fontSize: isMobile ? '12px' : '11px', color: '#94a3b8', marginTop: '2px' }}>
           다음 자동 수집 예정: {getNextCollectionLabel()} (관세청 통계 발표 후 반영)
+        </div>
+        <div style={{ fontSize: isMobile ? '12px' : '11px', color: '#94a3b8', marginTop: '4px' }}>
+          📰 더 빠른 잠정치:{' '}
+          <a
+            href={MOTIE_PRESS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'underline' }}
+          >
+            산업부 「월간 수출입 동향」(매월 1일 발표) 보러 가기 ↗
+          </a>
+          {' '}· 관세청 확정치와 분류 기준이 달라 금액이 다를 수 있음
         </div>
       </div>
 
